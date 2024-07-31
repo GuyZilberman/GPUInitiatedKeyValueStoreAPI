@@ -60,7 +60,7 @@ struct KVMemHandle{
 };
 
 enum class CommandType {
-    NONE = -2,
+    NONE,
     EXIT,
     PUT,
     GET,
@@ -72,11 +72,11 @@ enum class CommandType {
 };
 
 enum class KVStatusType {
-    NONE = -2,
-    EXIT,
     SUCCESS,
     FAIL,
-    NON_EXIST
+    NON_EXIST,
+    EXIT,
+    NONE
 };
 
 enum class AllocationType {

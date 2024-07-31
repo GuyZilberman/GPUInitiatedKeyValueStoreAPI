@@ -52,7 +52,7 @@ class GPUDeviceInitializer{
 
         GPUDeviceInitializer () : gdrHandle() {
             // Open a handle to the GPUDirect RDMA driver
-            gdrHandle = gdr_open_safe(); //TODO guy error check?
+            gdrHandle = gdr_open_safe();
 
             // Initialize the CUDA driver API
             ASSERTDRV(cuInit(0));

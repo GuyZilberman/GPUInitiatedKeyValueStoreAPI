@@ -1,0 +1,48 @@
+{
+    //You can use IntelliSense to learn the available attributes.
+    //Hover and display the description of existing attributes.
+    //Check the following for more information: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "CUDA C++: Launch",
+            "type": "cuda-gdb",
+            "request": "launch",
+            "cwd": "${workspaceFolder}",
+            "program": "${workspaceFolder}/kvapp",
+            "environment": [
+                {
+                    "name": "LD_LIBRARY_PATH",
+                    "value": "/etc/pliops:/usr/local/cuda-12.3/lib64:/etc/pliops:/usr/local/cuda-12.3/lib64"
+                }
+            ],
+            "onAPIError": "stop"
+        },
+        {
+            "name": "Debug Server process",
+            "type": "cppdbg",
+            "request": "launch",
+            "cwd": "${workspaceFolder}",
+            "program": "${workspaceFolder}/kvapp",
+            "environment": [
+                {
+                    "name": "LD_LIBRARY_PATH",
+                    "value": "/etc/pliops:/usr/local/cuda-12.3/lib64:/etc/pliops:/usr/local/cuda-12.3/lib64"
+                }
+            ],
+            "MIMode": "gdb",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                },
+                {
+                    "description": "Set Disassembly Flavor to Intel",
+                    "text": "-gdb-set disassembly-flavor intel",
+                    "ignoreFailures": true
+                }
+            ]
+        }
+    ]
+}

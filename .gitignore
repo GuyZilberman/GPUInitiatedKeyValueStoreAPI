@@ -5,7 +5,9 @@ libkey_value_store.a
 *.sqlite
 log*
 *.o
+*.d
 compile_commands.json
+build
 
 # test artifacts
 results*

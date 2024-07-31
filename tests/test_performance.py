@@ -5,6 +5,7 @@ import time
 import os
 import argparse
 from datetime import datetime
+import csv
 
 SLEEP_TIME = 10
 
@@ -66,6 +67,14 @@ for size in value_sizes:
     print(f"Starting run for VALUE_SIZE={size}")
     start_time = time.perf_counter()
 
+    # Define the CSV file path for the current VALUE_SIZE
+    file_path = os.path.join(output_dir, f"results_{size}.csv")
+
+    # Write headers to the CSV file
+    with open(file_path, mode='w', newline='') as file:
+        writer = csv.writer(file)
+        writer.writerow(["Thread Blocks", "Write Time (s)", "Read Time (s)", "Write Bandwidth (GB/s)", "Read Bandwidth (GB/s)", "Write IOPS", "Read IOPS"])
+
     results = []
     
     # Build the application with the current VALUE_SIZE
@@ -126,24 +135,16 @@ for size in value_sizes:
         median_write_iops = np.median(write_iops)
         median_read_iops = np.median(read_iops)
         
-        # Append the median results
-        results.append({
-            "Thread Blocks": tb,
-            "Write Time (s)": median_write_time,
-            "Read Time (s)": median_read_time,
-            "Write Bandwidth (GB/s)": median_write_bandwidth,
-            "Read Bandwidth (GB/s)": median_read_bandwidth,
-            "Write IOPS": median_write_iops,
-            "Read IOPS": median_read_iops
-        })
+        # Prepare the row of results
+        result_row = [tb, median_write_time, median_read_time, median_write_bandwidth, median_read_bandwidth, median_write_iops, median_read_iops]
+        
+        # Append the row to the CSV file
+        with open(file_path, mode='a', newline='') as file:
+            writer = csv.writer(file)
+            writer.writerow(result_row)
+
         print(f"Finished running tb = {tb}, size = {size}")
     
-    # Convert results to DataFrame
-    df = pd.DataFrame(results)
-    
-    # Save the DataFrame to a CSV file, one file per VALUE_SIZE
-    file_path = os.path.join(output_dir, f"results_{size}.csv")
-    df.to_csv(file_path, index=False)
     end_time = time.perf_counter()
 
     # Calculate the duration

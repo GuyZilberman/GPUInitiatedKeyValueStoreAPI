@@ -1,7 +1,5 @@
 #include "key_value_store.cuh"
 
-//https://chat.openai.com/c/1014224d-4eb5-45ae-9862-a60a3b162a88
-
 std::string getCommandString(CommandType command) {
     static const std::map<CommandType, std::string> commandStrings = {
         {CommandType::PUT, "PLIOPS_Put"},
@@ -602,7 +600,6 @@ void KeyValueStore::process_kv_request(KVMemHandle &kvMemHandle, int blockIndex,
             getFromMemoryStore(submission_queue->req_msg_arr[(currModTail + i) % queueSize], &h_devDataBank_p->data[(currModTail + i) % queueSize * h_devDataBank_p->maxValueSize], inMemoryStoreMap, res_msg.KVStatus[i]);
         });
 #else
-        // TODO guy Check if it is possible to make this async
         tbb::parallel_for(size_t(0), num_keys, [&](size_t i) {
             getFromPliopsDB(plio_handle, submission_queue->req_msg_arr[(currModTail + i) % queueSize], &h_devDataBank_p->data[(currModTail + i) % queueSize * h_devDataBank_p->maxValueSize], res_msg.KVStatus[i], res_msg.StorelibStatus[i]);
         });
@@ -751,7 +748,7 @@ bool KeyValueStore::KVOpenDB(KVMemHandle& kvMemHandle) {
 #if !defined(STORELIB_LOOPBACK) && !defined(IN_MEMORY_STORE)
     PLIOPS_IDENTIFY_t& identify = kvMemHandle.identify;
     PLIOPS_DB_t& plio_handle= kvMemHandle.plio_handle;
-    PLIOPS_DB_OPEN_OPTIONS_t db_open_options; //TODO guy check what each flag in the option does
+    PLIOPS_DB_OPEN_OPTIONS_t db_open_options;
     db_open_options.createIfMissing = 1;
     db_open_options.tailSizeInBytes = 0;
     db_open_options.errorIfExists = false;
@@ -893,7 +890,6 @@ void KeyValueStore::KVMultiPutH(void* keys[], unsigned int keySize, void* buffs[
     int *StorelibStatus = (int*)malloc(numKeys * sizeof(int));
     PLIOPS_DB_t plio_handle = pKVMemHandle->plio_handle; 
     tbb::parallel_for(size_t(0), numKeys, [&](size_t i) {
-        // putInPliopsDB(plio_handle, submission_queue->req_msg_arr[(currModTail + i) % queueSize], &h_hostDataBank_p->data[(currModTail + i) % queueSize * h_hostDataBank_p->maxValueSize], KVStatus[i], StorelibStatus[i]); // TODO guy DELETE
         StorelibStatus[i] = PLIOPS_Put(plio_handle, keys[i], keySize, buffs[i], buffSize, NO_OPTIONS);
 
         if (StorelibStatus[i] != 0) {
