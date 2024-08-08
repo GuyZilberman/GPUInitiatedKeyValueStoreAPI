@@ -13,11 +13,9 @@ libkey_value_store.a: $(KV_LIB_OBJS)
 	ar rcs $@ $(KV_LIB_OBJS)
 
 kvstore: libkey_value_store.a
-	rm -f $(KV_LIB_OBJS)
 
 kvapp: $(BENCHMARK_OBJS) libkey_value_store.a
 	$(CC) $(CFLAGS) $(BENCHMARK_OBJS) -o $@ $(LFLAGS) $(LIBS)
-	rm -f $(BENCHMARK_OBJS)
 
 clean:
 	rm -f $(BUILD_DIR)/*.o $(BUILD_DIR)/*.d *.a kvapp

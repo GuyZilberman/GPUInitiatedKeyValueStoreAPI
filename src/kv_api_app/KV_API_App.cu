@@ -61,9 +61,7 @@ void ResetIndex(UserResources* d_userResources){
 
 __global__
 void InitData(UserResources* d_userResources){
-    int tid = threadIdx.z * blockDim.y * blockDim.x 
-                    + threadIdx.y * blockDim.x 
-                    + threadIdx.x;
+    int tid = THREAD_ID;
     
     BEGIN_THREAD_ZERO {
         for (int j = 0; j < NUM_KEYS; j++)    
@@ -98,11 +96,11 @@ void check_wrong_answer(int* actual_answer_buf, int expected_answer, int &wrong_
         if (actual_answer_buf[0] != expected_answer){
             wrong_answers++;
             int blockIndex = blockIdx.x;
-            printf("~~~~~~~~~~~~~~~~~\n");
-            printf("~~~ Block %d: wrong answers: %d\n", blockIndex, wrong_answers);
-            printf("~~~ actual_answer_buf[0] = %d\n", actual_answer_buf[0]);
-            printf("~~~ expected_answer = %d\n", expected_answer);
-            printf("~~~~~~~~~~~~~~~~~\n");
+            printf("-----------------\n");
+            printf("--- Block %d: wrong answers: %d\n", blockIndex, wrong_answers);
+            printf("--- actual_answer_buf[0] = %d\n", actual_answer_buf[0]);
+            printf("--- expected_answer = %d\n", expected_answer);
+            printf("-----------------\n");
         }
     } END_THREAD_ZERO
 }
@@ -110,9 +108,7 @@ void check_wrong_answer(int* actual_answer_buf, int expected_answer, int &wrong_
 __global__
 void read_kernel(KeyValueStore *kvStore, UserResources* d_userResources, const int numIterations) {    
     int blockIndex = blockIdx.x;
-    int tid = threadIdx.z * blockDim.y * blockDim.x 
-                    + threadIdx.y * blockDim.x 
-                    + threadIdx.x;
+    int tid = THREAD_ID;
                     
     UserResources &userResources = d_userResources[blockIndex];
 #ifdef CHECK_WRONG_ANSWERS
@@ -162,9 +158,7 @@ void read_kernel(KeyValueStore *kvStore, UserResources* d_userResources, const i
 __global__
 void write_kernel(KeyValueStore *kvStore, UserResources* d_userResources, const int numIterations) {    
     int blockIndex = blockIdx.x;
-    int tid = threadIdx.z * blockDim.y * blockDim.x 
-                    + threadIdx.y * blockDim.x 
-                    + threadIdx.x;
+    int tid = THREAD_ID;
                     
     UserResources &userResources = d_userResources[blockIndex];
 

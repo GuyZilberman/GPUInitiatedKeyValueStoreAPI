@@ -170,7 +170,7 @@ public:
     bool push_get(ThreadBlockResources* d_tbResources, int &tid, CommandType cmd, uint &request_id, void** keys, int keySize, int buffSize, int incrementSize);
 
     __device__
-    bool push_async_get_initialize(ThreadBlockResources* d_tbResources, int &tid, CommandType cmd, uint &request_id, void** keys, int keySize, void** buffs, int buffSize, KVStatusType KVStatus[], int incrementSize);
+    bool push_async_get_initiate(ThreadBlockResources* d_tbResources, int &tid, CommandType cmd, uint &request_id, void** keys, int keySize, void** buffs, int buffSize, KVStatusType KVStatus[], int incrementSize);
 
     __device__ 
     bool push_delete(ThreadBlockResources* d_tbResources, int &tid, CommandType cmd, uint &request_id, void** keys, int keySize, int incrementSize = 1);

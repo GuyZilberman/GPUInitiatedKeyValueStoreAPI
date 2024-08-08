@@ -1,4 +1,5 @@
 #include "key_value_store.cuh"
+#define THREAD_ID (threadIdx.z * blockDim.y * blockDim.x + threadIdx.y * blockDim.x + threadIdx.x)
 
 std::string getCommandString(CommandType command) {
     static const std::map<CommandType, std::string> commandStrings = {
@@ -223,7 +224,7 @@ bool HostAllocatedSubmissionQueue::push_get(ThreadBlockResources* d_tbResources,
 }
 
 __device__ 
-bool HostAllocatedSubmissionQueue::push_async_get_initialize(ThreadBlockResources* d_tbResources, int &tid, CommandType cmd, uint &request_id, void** keys, int keySize, void** buffs, int buffSize, KVStatusType KVStatus[], int incrementSize) {
+bool HostAllocatedSubmissionQueue::push_async_get_initiate(ThreadBlockResources* d_tbResources, int &tid, CommandType cmd, uint &request_id, void** keys, int keySize, void** buffs, int buffSize, KVStatusType KVStatus[], int incrementSize) {
     if (getTailAndCheckFull(d_tbResources, tid, incrementSize))
         return false;
 
@@ -465,9 +466,7 @@ void KeyValueStore::KVPutBaseD(void* keys[], const unsigned int keySize, void* b
     DeviceCompletionQueueWithDataBank *d_devmem_p = (DeviceCompletionQueueWithDataBank *)this->sharedGPUCompletionQueueWithDataBank.getDevicePtr();
 
     int blockIndex = blockIdx.x;
-    int tid = threadIdx.z * blockDim.y * blockDim.x 
-                    + threadIdx.y * blockDim.x 
-                    + threadIdx.x;
+    int tid = THREAD_ID;
                     
     ThreadBlockResources &tbResources = this->d_tbResources[blockIndex];
     HostAllocatedSubmissionQueue *submission_queue = &d_hostmem_p[blockIndex].sq;
@@ -486,9 +485,7 @@ void KeyValueStore::KVGetBaseD(void* keys[], const unsigned int keySize, void* b
     DeviceCompletionQueueWithDataBank *d_devmem_p = (DeviceCompletionQueueWithDataBank *)this->sharedGPUCompletionQueueWithDataBank.getDevicePtr();
 
     int blockIndex = blockIdx.x;
-    int tid = threadIdx.z * blockDim.y * blockDim.x 
-                    + threadIdx.y * blockDim.x 
-                    + threadIdx.x;
+    int tid = THREAD_ID;
                     
     ThreadBlockResources &tbResources = this->d_tbResources[blockIndex];
     HostAllocatedSubmissionQueue *submission_queue = &d_hostmem_p[blockIndex].sq;
@@ -688,6 +685,7 @@ KeyValueStore::KeyValueStore(const int numThreadBlocks, const int blockSize, int
     ThreadBlockResources* h_tbResources = (ThreadBlockResources*)malloc(numThreadBlocks * sizeof(ThreadBlockResources));
     for(size_t i = 0; i < numThreadBlocks; ++i)
         new (&h_tbResources[i]) ThreadBlockResources(maxNumKeys);
+        
     CUDA_ERRCHECK(cudaMalloc(&d_tbResources, numThreadBlocks * sizeof(ThreadBlockResources)));
     CUDA_ERRCHECK(cudaMemcpy(d_tbResources, h_tbResources, numThreadBlocks * sizeof(ThreadBlockResources), cudaMemcpyHostToDevice)); 
     free(h_tbResources);
@@ -827,9 +825,7 @@ void KeyValueStore::KVDeleteD(void* key, unsigned int keySize, KVStatusType KVSt
     DeviceCompletionQueueWithDataBank *d_devmem_p = (DeviceCompletionQueueWithDataBank *)this->sharedGPUCompletionQueueWithDataBank.getDevicePtr();
 
     int blockIndex = blockIdx.x;
-    int tid = threadIdx.z * blockDim.y * blockDim.x 
-                    + threadIdx.y * blockDim.x 
-                    + threadIdx.x;
+    int tid = THREAD_ID;
                     
     ThreadBlockResources &tbResources = this->d_tbResources[blockIndex];
     HostAllocatedSubmissionQueue *submission_queue = &d_hostmem_p[blockIndex].sq;
@@ -848,9 +844,7 @@ void KeyValueStore::KVAsyncGetInitiateD(void* keys[], const unsigned int keySize
     DeviceCompletionQueueWithDataBank *d_devmem_p = (DeviceCompletionQueueWithDataBank *)sharedGPUCompletionQueueWithDataBank.getDevicePtr();
 
     int blockIndex = blockIdx.x;
-    int tid = threadIdx.z * blockDim.y * blockDim.x 
-                    + threadIdx.y * blockDim.x 
-                    + threadIdx.x;
+    int tid = THREAD_ID;
                     
     ThreadBlockResources &tbResources = d_tbResources[blockIndex];
     HostAllocatedSubmissionQueue *submission_queue = &d_hostmem_p[blockIndex].sq;
@@ -859,7 +853,7 @@ void KeyValueStore::KVAsyncGetInitiateD(void* keys[], const unsigned int keySize
     void** buffs = (void**)valMultiBuff.getHostPtr();
     KVStatusType* KVStatus = (KVStatusType*)kvStatusMultiBuff.getHostPtr();
 
-    while (!submission_queue->push_async_get_initialize(&tbResources, tid, CommandType::ASYNC_GET_INITIATE, tbResources.request_id, keys, keySize, buffs, buffSize, KVStatus, numKeys));
+    while (!submission_queue->push_async_get_initiate(&tbResources, tid, CommandType::ASYNC_GET_INITIATE, tbResources.request_id, keys, keySize, buffs, buffSize, KVStatus, numKeys));
     // Immediately wait for a response
     while (!completion_queue->pop_async_get_init(&tbResources, tid, p_ticket, numKeys));
 }
@@ -951,9 +945,7 @@ void KVExitD(KeyValueStore *kvStore) {
     DeviceCompletionQueueWithDataBank *d_devmem_p = (DeviceCompletionQueueWithDataBank *)kvStore->sharedGPUCompletionQueueWithDataBank.getDevicePtr();
 
     int blockIndex = blockIdx.x;
-    int tid = threadIdx.z * blockDim.y * blockDim.x 
-                    + threadIdx.y * blockDim.x 
-                    + threadIdx.x;
+    int tid = THREAD_ID;
                     
     ThreadBlockResources &tbResources = kvStore->d_tbResources[blockIndex];
     HostAllocatedSubmissionQueue *submission_queue = &d_hostmem_p[blockIndex].sq;
