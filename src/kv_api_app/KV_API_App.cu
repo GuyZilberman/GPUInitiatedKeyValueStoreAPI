@@ -18,7 +18,9 @@
 #define NUM_ITERATIONS 10
 #define DEFAULT_NUM_THREAD_BLOCKS 70
 #define DEFAULT_W_MODE "d"
+#define DEFAULT_R_KERNEL "sync"
 #define NUM_THREADS_PER_THREAD_BLOCK 512
+#define CONCURRENT_COUNT 10
 
 // Constant definitions
 #define GET_START_ID NUM_ITERATIONS
@@ -34,21 +36,29 @@ struct UserResources {
     int* keys[NUM_KEYS]; // Array of key ptrs - point to the values in multiKey
     int* buffs[NUM_KEYS];
     int dataBuffers[NUM_KEYS][DATA_ARR_SIZE];
-    GPUMultiBufferHandle userMultiBuffer;
-    GPUMultiBufferHandle userKVStatusArr;
+
+    GPUMultiBufferHandle arrOfUserMultiBuffer[CONCURRENT_COUNT]; 
+    GPUMultiBufferHandle arrOfUserKVStatusArr[CONCURRENT_COUNT];
 
     UserResources(){
         // Set by user
         size_t buffer_size_in_bytes = DATA_ARR_SIZE * sizeof(int);
         size_t num_buffers = NUM_KEYS;
 
-        cudaGPUMultiBufferAlloc(userMultiBuffer, num_buffers, buffer_size_in_bytes);
-        cudaGPUMultiBufferAlloc(userKVStatusArr, num_buffers, sizeof(KVStatusType));
+        for (size_t i = 0; i < CONCURRENT_COUNT; i++)
+        {
+            cudaGPUMultiBufferAlloc(arrOfUserMultiBuffer[i], num_buffers, buffer_size_in_bytes);
+            cudaGPUMultiBufferAlloc(arrOfUserKVStatusArr[i], num_buffers, sizeof(KVStatusType));
+        }
+        
     }
 
     ~UserResources(){
-        cudaGPUMultiBufferFree(userMultiBuffer);
-        cudaGPUMultiBufferFree(userKVStatusArr);
+        for (size_t i = 0; i < CONCURRENT_COUNT; i++)
+        {
+            cudaGPUMultiBufferFree(arrOfUserMultiBuffer[i]);
+            cudaGPUMultiBufferFree(arrOfUserKVStatusArr[i]);
+        }
     }
 
 };
@@ -106,6 +116,116 @@ void check_wrong_answer(int* actual_answer_buf, int expected_answer, int &wrong_
 }
 
 __global__
+void async_read_kernel_3phase(KeyValueStore *kvStore, UserResources* d_userResources, const int numIterations) {    
+    int blockIndex = blockIdx.x;
+    int tid = threadIdx.z * blockDim.y * blockDim.x 
+                    + threadIdx.y * blockDim.x 
+                    + threadIdx.x;
+                    
+    UserResources &userResources = d_userResources[blockIndex];
+#ifdef CHECK_WRONG_ANSWERS
+    int wrong_answers = 0;
+#endif
+    unsigned int ticket_arr[CONCURRENT_COUNT]; // TODO guy keep it local memory?
+
+    while (userResources.idx < CONCURRENT_COUNT){
+        BEGIN_THREAD_ZERO {
+            userResources.idx++;
+            for (int j = 0; j < NUM_KEYS; j++) {
+                userResources.multiKey[j] = userResources.idx + 
+                        blockIndex * numIterations +
+                        j * gridDim.x * numIterations;
+                userResources.keys[j] = &userResources.multiKey[j];
+            }  
+        } END_THREAD_ZERO
+        kvStore->KVAsyncGetInitiateD((void**)userResources.keys, sizeof(int), userResources.arrOfUserMultiBuffer[userResources.idx % CONCURRENT_COUNT], sizeof(int) * DATA_ARR_SIZE, userResources.arrOfUserKVStatusArr[userResources.idx % CONCURRENT_COUNT], NUM_KEYS, &ticket_arr[userResources.idx % CONCURRENT_COUNT]);
+    }
+    
+    while (userResources.idx < numIterations){
+        BEGIN_THREAD_ZERO {
+            userResources.idx++;
+            for (int j = 0; j < NUM_KEYS; j++) {
+                userResources.multiKey[j] = userResources.idx + 
+                        blockIndex * numIterations +
+                        j * gridDim.x * numIterations;
+                userResources.keys[j] = &userResources.multiKey[j];
+            }
+        } END_THREAD_ZERO
+        kvStore->KVAsyncGetFinalizeD(ticket_arr[(userResources.idx - CONCURRENT_COUNT) % CONCURRENT_COUNT]);
+#ifdef CHECK_WRONG_ANSWERS
+        for (size_t i = 0; i < NUM_KEYS; i++)
+        {
+            check_wrong_answer((int*) userResources.arrOfUserMultiBuffer[(userResources.idx - CONCURRENT_COUNT) % CONCURRENT_COUNT].getDevicePtrSingleBuffer(i), userResources.idx - CONCURRENT_COUNT, wrong_answers);
+        }
+#endif
+        kvStore->KVAsyncGetInitiateD((void**)userResources.keys, sizeof(int), userResources.arrOfUserMultiBuffer[userResources.idx % CONCURRENT_COUNT], sizeof(int) * DATA_ARR_SIZE, userResources.arrOfUserKVStatusArr[userResources.idx % CONCURRENT_COUNT], NUM_KEYS, &ticket_arr[userResources.idx % CONCURRENT_COUNT]);
+    }
+    
+    while (userResources.idx < numIterations + CONCURRENT_COUNT){
+        BEGIN_THREAD_ZERO {
+            userResources.idx++;
+        } END_THREAD_ZERO
+        kvStore->KVAsyncGetFinalizeD(ticket_arr[(userResources.idx - CONCURRENT_COUNT) % CONCURRENT_COUNT]);
+#ifdef CHECK_WRONG_ANSWERS
+        for (size_t i = 0; i < NUM_KEYS; i++)
+        {
+            check_wrong_answer((int*) userResources.arrOfUserMultiBuffer[(userResources.idx - CONCURRENT_COUNT) % CONCURRENT_COUNT].getDevicePtrSingleBuffer(i), userResources.idx - CONCURRENT_COUNT, wrong_answers);
+        }
+#endif
+    }
+}
+
+__global__
+void async_read_kernel(KeyValueStore *kvStore, UserResources* d_userResources, const int numIterations) {    
+    int blockIndex = blockIdx.x;
+    int tid = threadIdx.z * blockDim.y * blockDim.x 
+                    + threadIdx.y * blockDim.x 
+                    + threadIdx.x;
+                    
+    UserResources &userResources = d_userResources[blockIndex];
+#ifdef CHECK_WRONG_ANSWERS
+    int wrong_answers = 0;
+#endif
+    unsigned int ticket_arr[CONCURRENT_COUNT]; // TODO guy keep it local memory?
+
+    while (userResources.idx < CONCURRENT_COUNT){
+        BEGIN_THREAD_ZERO {
+            userResources.idx++;
+            for (int j = 0; j < NUM_KEYS; j++) {
+                userResources.multiKey[j] = userResources.idx + 
+                        blockIndex * numIterations +
+                        j * gridDim.x * numIterations;
+                userResources.keys[j] = &userResources.multiKey[j];
+            }  
+        } END_THREAD_ZERO
+        kvStore->KVAsyncGetInitiateD((void**)userResources.keys, 
+        sizeof(int), 
+        userResources.arrOfUserMultiBuffer[userResources.idx % CONCURRENT_COUNT], 
+        sizeof(int) * DATA_ARR_SIZE, 
+        userResources.arrOfUserKVStatusArr[userResources.idx % CONCURRENT_COUNT], 
+        NUM_KEYS, 
+        &ticket_arr[userResources.idx % CONCURRENT_COUNT]);
+    }
+
+    BEGIN_THREAD_ZERO {
+        userResources.idx = 0; // TODO guy DELETE?
+    } END_THREAD_ZERO
+
+    while (userResources.idx < CONCURRENT_COUNT){
+        BEGIN_THREAD_ZERO {
+            userResources.idx++;
+        } END_THREAD_ZERO
+        kvStore->KVAsyncGetFinalizeD(ticket_arr[(userResources.idx) % CONCURRENT_COUNT]);
+#ifdef CHECK_WRONG_ANSWERS
+        for (size_t i = 0; i < NUM_KEYS; i++)
+        {
+            check_wrong_answer((int*) userResources.arrOfUserMultiBuffer[(userResources.idx) % CONCURRENT_COUNT].getDevicePtrSingleBuffer(i), userResources.idx, wrong_answers);
+        }
+#endif
+    }
+}
+
+__global__
 void read_kernel(KeyValueStore *kvStore, UserResources* d_userResources, const int numIterations) {    
     int blockIndex = blockIdx.x;
     int tid = THREAD_ID;
@@ -125,6 +245,7 @@ void read_kernel(KeyValueStore *kvStore, UserResources* d_userResources, const i
     // Send multiget requests after multiput requests
     while (userResources.idx < numIterations){
         BEGIN_THREAD_ZERO {
+            userResources.idx++;
             for (int i = 0; i < NUM_KEYS; i++) {
                 userResources.multiKey[i] = userResources.idx + 
                         blockIndex * numIterations +
@@ -133,17 +254,13 @@ void read_kernel(KeyValueStore *kvStore, UserResources* d_userResources, const i
             }  
         } END_THREAD_ZERO
 
-        // kvStore->KVMultiGetD((void**)userResources.keys, sizeof(int), (void**)userResources.buffs, sizeof(int) * DATA_ARR_SIZE, userResources.KVStatus, NUM_KEYS);
-        unsigned int ticket;
-        kvStore->KVAsyncGetInitiateD((void**)userResources.keys, sizeof(int), userResources.userMultiBuffer, sizeof(int) * DATA_ARR_SIZE, userResources.userKVStatusArr, NUM_KEYS, &ticket);
-        kvStore->KVAsyncGetFinalizeD(ticket);
+        kvStore->KVMultiGetD((void**)userResources.keys, sizeof(int), (void**)userResources.buffs, sizeof(int) * DATA_ARR_SIZE, userResources.KVStatus, NUM_KEYS);
 #ifdef CHECK_WRONG_ANSWERS
         for (size_t i = 0; i < NUM_KEYS; i++)
         {
-            check_wrong_answer((int*) userResources.userMultiBuffer.getDevicePtrSingleBuffer(i), userResources.idx, wrong_answers);
+            check_wrong_answer((int*) userResources.buffs[i], userResources.idx, wrong_answers);
         }
 #endif
-        userResources.idx++;
     }
 
 #ifdef MEASURE_RW_LOOPS
@@ -171,6 +288,7 @@ void write_kernel(KeyValueStore *kvStore, UserResources* d_userResources, const 
     // Send multiput requests 
     while (userResources.idx < numIterations){       
         BEGIN_THREAD_ZERO {
+            userResources.idx++;
             for (int i = 0; i < NUM_KEYS; i++) {
                 userResources.dataBuffers[i][0] = userResources.idx;
                 userResources.buffs[i] = userResources.dataBuffers[i];
@@ -182,7 +300,6 @@ void write_kernel(KeyValueStore *kvStore, UserResources* d_userResources, const 
         } END_THREAD_ZERO
 
         kvStore->KVMultiPutD((void**)userResources.keys, sizeof(int), (void**)userResources.buffs, sizeof(int) * DATA_ARR_SIZE, userResources.KVStatus, NUM_KEYS);
-        userResources.idx++;
     }
     BEGIN_THREAD_ZERO {
 #ifdef MEASURE_RW_LOOPS
@@ -285,6 +402,7 @@ void appPutHCalls(int numThreadBlocks, KeyValueStore *kvStore){
 int main(int argc, char* argv[]) {
     int numThreadBlocks = DEFAULT_NUM_THREAD_BLOCKS;
     std::string wMode = DEFAULT_W_MODE;
+    std::string rKernel = DEFAULT_R_KERNEL;
     for (int i = 1; i < argc; ++i) {
         if ((strcmp(argv[i], "--tb") == 0 || strcmp(argv[i], "--thread-blocks") == 0) && i + 1 < argc) {
             numThreadBlocks = std::atoi(argv[++i]);
@@ -296,10 +414,19 @@ int main(int argc, char* argv[]) {
             else if (wMode == "device" || wMode == "d")
                 wMode = "d";
             else{
-                wMode = "d";
-                printf("Write mode unavailable, choose h (host) or d (device). Using default value + %s\n", DEFAULT_W_MODE);
+                std::cout << "Write mode unavailable, choose h (host) or d (device). Using default value " << wMode << std::endl;
             }
-                
+        }
+        else if ((strcmp(argv[i], "--rk") == 0 || strcmp(argv[i], "--read-kernel") == 0) && i + 1 < argc) {
+            rKernel = argv[++i];
+            std::transform(rKernel.begin(), rKernel.end(), rKernel.begin(), [](unsigned char c){ return std::tolower(c); });
+            if (rKernel == "sync")
+                rKernel = "sync";
+            else if (rKernel == "async")
+                rKernel = "async";
+            else{
+                std::cout << "Read kernel unavailable, choose sync or async. Using default value " << rKernel << std::endl;
+            }
         }
     }
     //checkCPUCoreAvailability(numThreadBlocks);
@@ -309,7 +436,9 @@ int main(int argc, char* argv[]) {
     std::cout << "Using " << numThreadBlocks << " thread blocks." << std::endl;
     std::cout << "Block size: " << blockSize << " threads per block." << std::endl;
     std::cout << "Write mode: " << wMode << std::endl;
+    std::cout << "Read Kernel: " << rKernel << std::endl;
     std::cout << "NUM_ITERATIONS: " << NUM_ITERATIONS << std::endl;
+    std::cout << "CONCURRENT_COUNT: " << CONCURRENT_COUNT << std::endl;
     std::cout << "NUM_KEYS: " << NUM_KEYS << std::endl;
     std::cout << "DATA_ARR_SIZE: " << DATA_ARR_SIZE << std::endl;
     std::cout << "---------------------------------------" << std::endl;
@@ -356,9 +485,16 @@ int main(int argc, char* argv[]) {
     ResetIndex<<<numThreadBlocks, 1>>>(d_userResources);
     CUDA_ERRCHECK(cudaDeviceSynchronize());
 
-    sync_and_measure_time([&]() {
-        read_kernel<<<numThreadBlocks, blockSize>>>(kvStore, d_userResources, NUM_ITERATIONS);
-    }, "read_kernel", numThreadBlocks);
+    if (rKernel == "sync"){
+        sync_and_measure_time([&]() {
+            read_kernel<<<numThreadBlocks, blockSize>>>(kvStore, d_userResources, NUM_ITERATIONS);
+        }, "read_kernel", numThreadBlocks);
+    }
+    else if (rKernel == "async"){
+        sync_and_measure_time([&]() {
+            async_read_kernel_3phase<<<numThreadBlocks, blockSize>>>(kvStore, d_userResources, NUM_ITERATIONS);
+        }, "async_read_kernel_3phase", numThreadBlocks);
+    }
 
     // GPU memory free:
     CUDA_ERRCHECK(cudaFree(d_userResources));

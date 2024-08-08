@@ -57,6 +57,8 @@
         "set": "cpp",
         "mutex": "cpp",
         "__config": "cpp",
-        "future": "cpp"
+        "future": "cpp",
+        "bitset": "cpp",
+        "codecvt": "cpp"
     }
 }

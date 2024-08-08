@@ -618,7 +618,6 @@ void KeyValueStore::process_kv_request(KVMemHandle &kvMemHandle, int blockIndex,
         }
         else {
             printf("KEY NOT FOUND!, ticket = %d\n", ticket); // TODO guy handle this better
-            printMapContents(ticketToFutureMapArr[blockIndex]); // TODO guy DELETE
         }
         
     }
