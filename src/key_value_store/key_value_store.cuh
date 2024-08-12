@@ -253,7 +253,7 @@ class KeyValueStore {
 
         void server_func(KVMemHandle &kvMemHandle, int blockIndex);
 
-        void process_async_get(KVMemHandle &kvMemHandle, int blockIndex, ResponseMessage &res_msg, int currModTail, size_t num_keys);
+        void process_async_get(KVMemHandle &kvMemHandle, int blockIndex, ResponseMessage &res_msg, int currModTail, size_t num_keys, void* keys_buffer);
 
         void process_kv_request(KVMemHandle &kvMemHandle, int blockIndex, ResponseMessage *res_msg_arr, int currTail, RequestMessage &req_msg);
 
