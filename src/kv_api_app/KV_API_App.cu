@@ -12,11 +12,11 @@
 #define NUM_KEYS 512
 #endif
 #ifndef VALUE_SIZE
-#define VALUE_SIZE 1024
+#define VALUE_SIZE 4096
 #endif
 #define DATA_ARR_SIZE (VALUE_SIZE / sizeof(int))
-#define NUM_ITERATIONS 10
-#define DEFAULT_NUM_THREAD_BLOCKS 70
+#define NUM_ITERATIONS 2000
+#define DEFAULT_NUM_THREAD_BLOCKS 72
 #define DEFAULT_W_MODE "d"
 #define DEFAULT_R_KERNEL "sync"
 #define NUM_THREADS_PER_THREAD_BLOCK 512
@@ -399,10 +399,7 @@ void appPutHCalls(int numThreadBlocks, KeyValueStore *kvStore){
     }
 }
 
-int main(int argc, char* argv[]) {
-    int numThreadBlocks = DEFAULT_NUM_THREAD_BLOCKS;
-    std::string wMode = DEFAULT_W_MODE;
-    std::string rKernel = DEFAULT_R_KERNEL;
+void parseArguments(int argc, char* argv[], int &numThreadBlocks, std::string &wMode, std::string &rKernel){
     for (int i = 1; i < argc; ++i) {
         if ((strcmp(argv[i], "--tb") == 0 || strcmp(argv[i], "--thread-blocks") == 0) && i + 1 < argc) {
             numThreadBlocks = std::atoi(argv[++i]);
@@ -429,8 +426,9 @@ int main(int argc, char* argv[]) {
             }
         }
     }
-    //checkCPUCoreAvailability(numThreadBlocks);
-    const int blockSize = NUM_THREADS_PER_THREAD_BLOCK;
+}
+
+void printSettings(int numThreadBlocks, int blockSize, const std::string &wMode, const std::string &rKernel){
     std::cout << "---------------------------------------" << std::endl;
     std::cout << "Settings:" << std::endl;
     std::cout << "Using " << numThreadBlocks << " thread blocks." << std::endl;
@@ -442,6 +440,15 @@ int main(int argc, char* argv[]) {
     std::cout << "NUM_KEYS: " << NUM_KEYS << std::endl;
     std::cout << "DATA_ARR_SIZE: " << DATA_ARR_SIZE << std::endl;
     std::cout << "---------------------------------------" << std::endl;
+}
+
+int main(int argc, char* argv[]) {
+    int numThreadBlocks = DEFAULT_NUM_THREAD_BLOCKS;
+    const int blockSize = NUM_THREADS_PER_THREAD_BLOCK;
+    std::string wMode = DEFAULT_W_MODE;
+    std::string rKernel = DEFAULT_R_KERNEL;
+    parseArguments(argc, argv, numThreadBlocks, wMode, rKernel);
+    printSettings(numThreadBlocks, blockSize, wMode, rKernel);
 
     KVMemHandle kvMemHandle;
 
