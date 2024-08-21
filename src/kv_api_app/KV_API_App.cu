@@ -15,8 +15,8 @@
 #define VALUE_SIZE 4096
 #endif
 #define DATA_ARR_SIZE (VALUE_SIZE / sizeof(int))
-#define NUM_ITERATIONS 2000
-#define DEFAULT_NUM_THREAD_BLOCKS 72
+#define NUM_ITERATIONS 10
+#define DEFAULT_NUM_THREAD_BLOCKS 70
 #define DEFAULT_W_MODE "d"
 #define DEFAULT_R_KERNEL "sync"
 #define NUM_THREADS_PER_THREAD_BLOCK 512
@@ -390,7 +390,6 @@ void appPutHCalls(int numThreadBlocks, KeyValueStore *kvStore){
                 keys[i] = &multiKey[i];
             }        
 
-            // kvStore->KVMultiPutH((void**)keys, sizeof(int), (void**)buffs, sizeof(int) * DATA_ARR_SIZE, KVStatus, NUM_KEYS);
             for (int i = 0; i < NUM_KEYS; i++){
                 kvStore->KVPutH(keys[i], sizeof(int), buffs[i], sizeof(int) * DATA_ARR_SIZE, KVStatus[i]);
             }

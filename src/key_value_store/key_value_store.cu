@@ -41,16 +41,16 @@ int readEnvVar(const char* varName) {
 // KeyHasher
 
 #ifdef IN_MEMORY_STORE
-size_t KeyHasher::hash(const std::vector<unsigned char>& key) const {
-    std::size_t hash = 0;
+size_t KeyHasher::hash(std::array<unsigned char, MAX_KEY_SIZE> key) const {
     std::hash<unsigned char> hasher;
-    for (const auto& elem : key) {
-        hash ^= hasher(elem) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
+    size_t hash = 0;
+    for (size_t i = 0; i < MAX_KEY_SIZE; ++i) {
+        hash ^= hasher(key[i]) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
     }
     return hash;
 }
 
-bool KeyHasher::equal(const std::vector<unsigned char>& key1, const std::vector<unsigned char>& key2) const {
+bool KeyHasher::equal(const std::array<unsigned char, MAX_KEY_SIZE>& key1, const std::array<unsigned char, MAX_KEY_SIZE>& key2) const {
     return key1 == key2;
 }
 #endif
@@ -168,11 +168,11 @@ __device__
 void HostAllocatedSubmissionQueue::copyMetaDataPutAndGet(ThreadBlockResources* d_tbResources, CommandType cmd, uint &request_id, void** keys, int keySize, int buffSize, int incrementSize, int &tid){
     int idx;
     int blockSize = blockDim.x;
+    req_msg_arr[(d_tbResources->currModTail) % this->queueSize].buffSize = buffSize;
     for (int i = tid; i < incrementSize; i += blockSize) 
     {    
         idx = (d_tbResources->currModTail + i) % this->queueSize;
         setRequestMessage(idx, cmd, request_id, keys[i], keySize, incrementSize);
-        req_msg_arr[idx].buffSize = buffSize;
     }
 }
 
@@ -180,13 +180,14 @@ __device__
 void HostAllocatedSubmissionQueue::copyMetaDataAsyncGet(ThreadBlockResources* d_tbResources, CommandType cmd, uint &request_id, void** keys, int keySize, void** buffs, int buffSize, KVStatusType KVStatus[], int incrementSize, int &tid){
     int idx;
     int blockSize = blockDim.x;
+    // Assigned by all threads in the thread block
+    req_msg_arr[d_tbResources->currModTail].buffSize = buffSize;
+    req_msg_arr[d_tbResources->currModTail].buffs = buffs;
+    req_msg_arr[d_tbResources->currModTail].KVStatus = KVStatus;
     for (int i = tid; i < incrementSize; i += blockSize) 
     {    
         idx = (d_tbResources->currModTail + i) % this->queueSize;
         setRequestMessage(idx, cmd, request_id, keys[i], keySize, incrementSize);
-        req_msg_arr[idx].buffSize = buffSize;
-        req_msg_arr[idx].buffs = buffs;
-        req_msg_arr[idx].KVStatus = KVStatus;
     }
 }
 
@@ -412,14 +413,15 @@ HostSubmissionQueueWithDataBank::HostSubmissionQueueWithDataBank(gdr_mh_t &mh, i
         dataBank(queueSize, maxValueSize, AllocationType::SHARED_CPU_MEMORY){}
 
 
-void handle_status(KVStatusType &KVStatus, int StorelibStatus, RequestMessage &req_msg){
+void handle_status(KVStatusType &KVStatus, int StorelibStatus, 
+CommandType cmd, uint request_id, void *key){ // TODO guy combine or remove
     if (StorelibStatus == 5) // Key does not exist
     {
         KVStatus = KVStatusType::NON_EXIST;
     }
     else if (StorelibStatus != 0) { // Any error othen than key does not exist
-        printf("%s Failed, ret=%d\n", getCommandString(req_msg.cmd).c_str(), StorelibStatus);
-        printf("req_msg.request_id = %d, req_msg.key = %d\n", req_msg.request_id, *((int*)req_msg.key));
+        printf("%s Failed, ret=%d\n", getCommandString(cmd).c_str(), StorelibStatus);
+        printf("req_msg.request_id = %d, req_msg.key = %d\n", request_id, *((int*)key));
         printf("---------------------------------------------------\n");
         KVStatus = KVStatusType::FAIL;
     }
@@ -428,19 +430,28 @@ void handle_status(KVStatusType &KVStatus, int StorelibStatus, RequestMessage &r
 }
 
 #ifdef IN_MEMORY_STORE
-void putInMemoryStore(RequestMessage &req_msg, void* data, tbb::concurrent_hash_map<std::vector<unsigned char>, std::vector<unsigned char>, KeyHasher> &inMemoryStoreMap, KVStatusType &res_ans) {
-    std::vector<unsigned char> key((unsigned char*)req_msg.key, (unsigned char*)req_msg.key + req_msg.keySize);
-    std::vector<unsigned char> val((unsigned char*)data, (unsigned char*)data + req_msg.buffSize);
-    inMemoryStoreMap.insert({key, val});
+void putInMemoryStore(RequestMessage &req_msg, void* data, tbb::concurrent_hash_map<std::array<unsigned char, MAX_KEY_SIZE>, std::array<unsigned char, MAX_VALUE_SIZE>, KeyHasher> &inMemoryStoreMap, KVStatusType &res_ans) {
+    std::array<unsigned char, MAX_KEY_SIZE> keyArray;
+    std::copy(static_cast<unsigned char*>(req_msg.key), 
+        static_cast<unsigned char*>(req_msg.key) + req_msg.keySize, 
+        keyArray.begin());
+
+    std::array<unsigned char, MAX_VALUE_SIZE> valArray;
+    std::copy(static_cast<unsigned char*>(data), 
+          static_cast<unsigned char*>(data) + req_msg.buffSize, 
+          valArray.begin());
+    inMemoryStoreMap.insert({keyArray, valArray});
+
     res_ans= KVStatusType::SUCCESS;
 }
 
-void getFromMemoryStore(RequestMessage &req_msg, void* data, tbb::concurrent_hash_map<std::vector<unsigned char>, std::vector<unsigned char>, KeyHasher> &inMemoryStoreMap, KVStatusType &res_ans, void* key) {
-    tbb::concurrent_hash_map<std::vector<unsigned char>, std::vector<unsigned char>, KeyHasher>::accessor a;
-    std::vector<unsigned char> keyVec((unsigned char*)key, (unsigned char*)key + req_msg.keySize); //TODO nbn check if can avoid copying
-    if (inMemoryStoreMap.find(a, keyVec)) {
-        std::vector<unsigned char> &val = a->second;
-        std::copy(val.begin(), val.end(), (unsigned char*)data);
+void getFromMemoryStore(RequestMessage &req_msg, void* data, tbb::concurrent_hash_map<std::array<unsigned char, MAX_KEY_SIZE>, std::array<unsigned char, MAX_VALUE_SIZE>, KeyHasher> &inMemoryStoreMap, KVStatusType &res_ans, void* key) {
+    tbb::concurrent_hash_map<std::array<unsigned char, MAX_KEY_SIZE>, std::array<unsigned char, MAX_VALUE_SIZE>, KeyHasher>::accessor a;
+    std::array<unsigned char, MAX_KEY_SIZE> keyArray;
+    std::copy((unsigned char*)key, (unsigned char*)key + req_msg.keySize, keyArray.begin());
+    if (inMemoryStoreMap.find(a, keyArray)) {
+        std::array<unsigned char, MAX_VALUE_SIZE> &val = a->second;
+        std::copy(val.begin(), val.begin() + req_msg.buffSize, static_cast<unsigned char*>(data));
     }
     else {
         // TODO guy Key not found handling 
@@ -451,13 +462,14 @@ void getFromMemoryStore(RequestMessage &req_msg, void* data, tbb::concurrent_has
 #else
 void putInPliopsDB(PLIOPS_DB_t &plio_handle, RequestMessage &req_msg, void *data, KVStatusType &KVStatus, int &StorelibStatus) {
     StorelibStatus = PLIOPS_Put(plio_handle, req_msg.key, req_msg.keySize, data, req_msg.buffSize, NO_OPTIONS);
-    handle_status(KVStatus, StorelibStatus, req_msg);
+    handle_status(KVStatus, StorelibStatus, req_msg.cmd, req_msg.request_id, req_msg.key);
 }
 
-void getFromPliopsDB(PLIOPS_DB_t &plio_handle, RequestMessage &req_msg, void *data, KVStatusType &KVStatus, int &StorelibStatus, void* key) {
+void getFromPliopsDB(PLIOPS_DB_t &plio_handle, RequestMessage &req_msg, void *data, KVStatusType &KVStatus, int &StorelibStatus, void* key,
+int keySize, int buffSize, CommandType cmd, uint request_id) { // TODO guy combine or remove
     uint get_actual_object_size;
-    StorelibStatus = PLIOPS_Get(plio_handle, key, req_msg.keySize, data, req_msg.buffSize, &get_actual_object_size);
-    handle_status(KVStatus, StorelibStatus, req_msg);
+    StorelibStatus = PLIOPS_Get(plio_handle, key, keySize, data, buffSize, &get_actual_object_size);
+    handle_status(KVStatus, StorelibStatus, cmd, request_id, key);
 }
 #endif
 
@@ -518,20 +530,26 @@ void KeyValueStore::server_func(KVMemHandle &kvMemHandle, int blockIndex) {
     }
 }
 
-void KeyValueStore::process_async_get(KVMemHandle &kvMemHandle, int blockIndex, ResponseMessage &res_msg, int currModTail, size_t num_keys, void* keys_buffer) {
+void KeyValueStore::process_async_get(KVMemHandle &kvMemHandle, int blockIndex, ResponseMessage &res_msg, int currModTail, size_t num_keys, void* keys_buffer,
+void **buffs, KVStatusType *KVStatus, int keySize, int buffSize, CommandType cmd, uint request_id // TODO guy combine or remove
+) {
     HostAllocatedSubmissionQueue *submission_queue = &h_hostmem_p[blockIndex].sq;
 #ifndef IN_MEMORY_STORE // XDP
     PLIOPS_DB_t& plio_handle = kvMemHandle.plio_handle;
     tbb::parallel_for(size_t(0), num_keys, [&](size_t i) {
         getFromPliopsDB(plio_handle, 
-        submission_queue->req_msg_arr[(currModTail + i) % submission_queue->queueSize], 
-        submission_queue->req_msg_arr[currModTail].buffs[i],
-        submission_queue->req_msg_arr[currModTail].KVStatus[i],
+        submission_queue->req_msg_arr[(currModTail + i) % submission_queue->queueSize], //TODO guy req_msg - kept to be used in the future
+        buffs[i],
+        KVStatus[i],
         res_msg.StorelibStatus[i],
-        (char*)keys_buffer + i * submission_queue->req_msg_arr[currModTail].keySize);
+        (char*)keys_buffer + i * keySize,
+        keySize, 
+        buffSize, 
+        cmd, 
+        request_id);
     });
 #else // IN_MEMORY_STORE
-    tbb::concurrent_hash_map<std::vector<unsigned char>, std::vector<unsigned char>, KeyHasher>& inMemoryStoreMap = kvMemHandle.inMemoryStoreMap;
+    tbb::concurrent_hash_map<std::array<unsigned char, MAX_KEY_SIZE>, std::array<unsigned char, MAX_VALUE_SIZE>, KeyHasher>& inMemoryStoreMap = kvMemHandle.inMemoryStoreMap;
     tbb::parallel_for(size_t(0), num_keys, [&](size_t i) {
         getFromMemoryStore(submission_queue->req_msg_arr[(currModTail + i) % queueSize], 
         submission_queue->req_msg_arr[currModTail].buffs[i],
@@ -566,7 +584,7 @@ void KeyValueStore::process_kv_request(KVMemHandle &kvMemHandle, int blockIndex,
 
 #ifdef STORELIB_LOOPBACK
 #elif defined(IN_MEMORY_STORE)
-    tbb::concurrent_hash_map<std::vector<unsigned char>, std::vector<unsigned char>, KeyHasher>& inMemoryStoreMap = kvMemHandle.inMemoryStoreMap;
+    tbb::concurrent_hash_map<std::array<unsigned char, MAX_KEY_SIZE>, std::array<unsigned char, MAX_VALUE_SIZE>, KeyHasher>& inMemoryStoreMap = kvMemHandle.inMemoryStoreMap;
 #else
     PLIOPS_DB_t& plio_handle = kvMemHandle.plio_handle;
     int ret = 0;
@@ -583,7 +601,10 @@ void KeyValueStore::process_kv_request(KVMemHandle &kvMemHandle, int blockIndex,
 
 #elif defined(IN_MEMORY_STORE)
         tbb::parallel_for(size_t(0), num_keys, [&](size_t i) {
-            putInMemoryStore(submission_queue->req_msg_arr[(currModTail + i) % queueSize], &h_hostDataBank_p->data[(currModTail + i) % queueSize * h_hostDataBank_p->maxValueSize], inMemoryStoreMap, res_msg.KVStatus[i]);
+            putInMemoryStore(submission_queue->req_msg_arr[(currModTail + i) % queueSize],
+            &h_hostDataBank_p->data[(currModTail + i) % queueSize * h_hostDataBank_p->maxValueSize], 
+            inMemoryStoreMap, 
+            res_msg.KVStatus[i]);
         });
 #else
         tbb::parallel_for(size_t(0), num_keys, [&](size_t i) {
@@ -612,7 +633,11 @@ void KeyValueStore::process_kv_request(KVMemHandle &kvMemHandle, int blockIndex,
             &h_devDataBank_p->data[(currModTail + i) % queueSize * h_devDataBank_p->maxValueSize], 
             res_msg.KVStatus[i], 
             res_msg.StorelibStatus[i], 
-            submission_queue->req_msg_arr[(currModTail + i) % queueSize].key);
+            submission_queue->req_msg_arr[(currModTail + i) % queueSize].key,
+            submission_queue->req_msg_arr[currModTail].keySize, 
+            submission_queue->req_msg_arr[currModTail].buffSize, 
+            submission_queue->req_msg_arr[currModTail].cmd, 
+            submission_queue->req_msg_arr[currModTail].request_id);
         });
 #endif
     }
@@ -622,7 +647,8 @@ void KeyValueStore::process_kv_request(KVMemHandle &kvMemHandle, int blockIndex,
             for(size_t j = 0; j < req_msg.keySize; j++)
                 ((unsigned char*)keys_buffer)[i * req_msg.keySize + j] = ((unsigned char*)(submission_queue->req_msg_arr[(currModTail + i) % submission_queue->queueSize].key))[j];
        
-        std::shared_future<void> asyncResult = std::async(std::launch::async, &KeyValueStore::process_async_get, this, std::ref(kvMemHandle), blockIndex, std::ref(res_msg), currModTail, num_keys, keys_buffer);
+        std::shared_future<void> asyncResult = std::async(std::launch::async, &KeyValueStore::process_async_get, this, std::ref(kvMemHandle), blockIndex, std::ref(res_msg), currModTail, num_keys, keys_buffer,
+        req_msg.buffs, req_msg.KVStatus, req_msg.keySize, req_msg.buffSize, req_msg.cmd, req_msg.request_id);
         ticketToFutureMapArr[blockIndex].insert({currTail, asyncResult}); // TODO guy switch to currHead? think about it
     }
     else if (command == CommandType::ASYNC_GET_FINALIZE){
@@ -648,7 +674,7 @@ void KeyValueStore::process_kv_request(KVMemHandle &kvMemHandle, int blockIndex,
         res_msg.KVStatus[0] = KVStatusType::SUCCESS;
 #else
         ret = PLIOPS_Delete(plio_handle, &req_msg.key, req_msg.keySize, NO_OPTIONS);
-        handle_status(res_msg.KVStatus[0], ret, req_msg);
+        handle_status(res_msg.KVStatus[0], ret,  req_msg.cmd, req_msg.request_id, req_msg.key);
 #endif
     }
     else
@@ -916,12 +942,15 @@ void KeyValueStore::KVMultiPutH(void* keys[], unsigned int keySize, void* buffs[
     free(StorelibStatus);
 
 #else // IN_MEMORY_STORE
-    tbb::concurrent_hash_map<std::vector<unsigned char>, std::vector<unsigned char>, KeyHasher> &inMemoryStoreMap = pKVMemHandle->inMemoryStoreMap;
+    tbb::concurrent_hash_map<std::array<unsigned char, MAX_KEY_SIZE>, std::array<unsigned char, MAX_VALUE_SIZE>, KeyHasher> &inMemoryStoreMap = pKVMemHandle->inMemoryStoreMap;
     tbb::parallel_for(size_t(0), numKeys, [&](size_t i) {
-        std::vector<unsigned char> keyVec((unsigned char*)keys[i], (unsigned char*)keys[i] + keySize);
-        std::vector<unsigned char> valVec((unsigned char*)buffs[i], (unsigned char*)buffs[i] + buffSize);
-        inMemoryStoreMap.insert({keyVec, valVec});
-        if (inMemoryStoreMap.insert({keyVec, valVec}))
+        std::array<unsigned char, MAX_KEY_SIZE> keyArray;
+        std::copy((unsigned char*)keys[i], (unsigned char*)keys[i] + keySize, keyArray.begin());
+
+        std::array<unsigned char, MAX_VALUE_SIZE> valArray;
+        std::copy((unsigned char*)buffs[i], (unsigned char*)buffs[i] + buffSize, valArray.begin());
+
+        if (inMemoryStoreMap.insert({keyArray, valArray}))
             KVStatus[i] = KVStatusType::SUCCESS;
         else
             KVStatus[i] = KVStatusType::FAIL;
@@ -946,10 +975,13 @@ void KeyValueStore::KVPutH(void* key, unsigned int keySize, void* buff, unsigned
     else
         KVStatus = KVStatusType::SUCCESS;
 #else // IN_MEMORY_STORE
-    tbb::concurrent_hash_map<std::vector<unsigned char>, std::vector<unsigned char>, KeyHasher> &inMemoryStoreMap = pKVMemHandle->inMemoryStoreMap;
-    std::vector<unsigned char> keyVec((unsigned char*)key, (unsigned char*)key + keySize);
-    std::vector<unsigned char> valVec((unsigned char*)buff, (unsigned char*)buff + buffSize);
-    if (inMemoryStoreMap.insert({keyVec, valVec}))
+    tbb::concurrent_hash_map<std::array<unsigned char, MAX_KEY_SIZE>, std::array<unsigned char, MAX_VALUE_SIZE>, KeyHasher> &inMemoryStoreMap = pKVMemHandle->inMemoryStoreMap;
+    std::array<unsigned char, MAX_KEY_SIZE> keyArray;
+    std::copy((unsigned char*)key, (unsigned char*)key + keySize, keyArray.begin());
+
+    std::array<unsigned char, MAX_VALUE_SIZE> valArray;
+    std::copy((unsigned char*)buff, (unsigned char*)buff + buffSize, valArray.begin());
+    if (inMemoryStoreMap.insert({keyArray, valArray}))
         KVStatus = KVStatusType::SUCCESS;
     else
         KVStatus = KVStatusType::FAIL;

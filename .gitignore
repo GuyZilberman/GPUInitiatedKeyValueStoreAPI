@@ -8,6 +8,7 @@ log*
 *.d
 compile_commands.json
 build
+README.md
 
 # test artifacts
 results*

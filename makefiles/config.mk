@@ -24,7 +24,9 @@ endif
 
 ifdef IN_MEMORY_STORE
     $(info Using in-memory store)
-    CFLAGS += -DIN_MEMORY_STORE
+    MAX_VALUE_SIZE := $(shell yq '.COMPILE_TIME.KV_STORE.IN_MEMORY_STORE.MAX_VALUE_SIZE' cfg/config.yaml)
+    MAX_KEY_SIZE := $(shell yq '.COMPILE_TIME.KV_STORE.IN_MEMORY_STORE.MAX_KEY_SIZE' cfg/config.yaml)
+    CFLAGS += -DIN_MEMORY_STORE -DMAX_VALUE_SIZE=$(MAX_VALUE_SIZE) -DMAX_KEY_SIZE=$(MAX_KEY_SIZE)
 endif
 
 ifdef XDP_ON_HOST
@@ -34,10 +36,6 @@ endif
 
 ifdef VALUE_SIZE
     CFLAGS += -DVALUE_SIZE=$(VALUE_SIZE)
-endif
-
-ifdef QUEUE_SIZE
-    CFLAGS += -DQUEUE_SIZE=$(QUEUE_SIZE)
 endif
 
 ifdef NUM_KEYS

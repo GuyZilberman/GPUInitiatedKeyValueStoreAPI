@@ -42,15 +42,15 @@ int readEnvVar(const char* varName);
 
 #ifdef IN_MEMORY_STORE
 struct KeyHasher{
-    size_t hash(const std::vector<unsigned char>& key) const;
+    size_t hash(const std::array<unsigned char, MAX_KEY_SIZE> key) const;
 
-    bool equal(const std::vector<unsigned char>& key1, const std::vector<unsigned char>& key2) const;
+    bool equal(const std::array<unsigned char, MAX_KEY_SIZE>& key1, const std::array<unsigned char, MAX_KEY_SIZE>& key2) const;
 };
 #endif
 
 struct KVMemHandle{
 #ifdef IN_MEMORY_STORE
-    tbb::concurrent_hash_map<std::vector<unsigned char>, std::vector<unsigned char>, KeyHasher> inMemoryStoreMap;
+    tbb::concurrent_hash_map<std::array<unsigned char, MAX_KEY_SIZE>, std::array<unsigned char, MAX_VALUE_SIZE>, KeyHasher> inMemoryStoreMap;
 #else
     PLIOPS_IDENTIFY_t identify;
     PLIOPS_DB_t plio_handle;
@@ -253,7 +253,8 @@ class KeyValueStore {
 
         void server_func(KVMemHandle &kvMemHandle, int blockIndex);
 
-        void process_async_get(KVMemHandle &kvMemHandle, int blockIndex, ResponseMessage &res_msg, int currModTail, size_t num_keys, void* keys_buffer);
+        void process_async_get(KVMemHandle &kvMemHandle, int blockIndex, ResponseMessage &res_msg, int currModTail, size_t num_keys, void* keys_buffer,
+        void **buffs, KVStatusType *KVStatus, int keySize, int buffSize, CommandType cmd, uint request_id); // TODO guy combine or remove
 
         void process_kv_request(KVMemHandle &kvMemHandle, int blockIndex, ResponseMessage *res_msg_arr, int currTail, RequestMessage &req_msg);
 
