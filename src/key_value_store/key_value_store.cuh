@@ -96,6 +96,7 @@ struct RequestMessage {
     unsigned int ticket;
 
     RequestMessage(int keySize);
+    RequestMessage(const RequestMessage& other);
     ~RequestMessage();
 };
 
@@ -253,8 +254,7 @@ class KeyValueStore {
 
         void server_func(KVMemHandle &kvMemHandle, int blockIndex);
 
-        void process_async_get(KVMemHandle &kvMemHandle, int blockIndex, ResponseMessage &res_msg, int currModTail, size_t num_keys, void* keys_buffer,
-        void **buffs, KVStatusType *KVStatus, int keySize, int buffSize, CommandType cmd, uint request_id); // TODO guy combine or remove
+        void process_async_get(KVMemHandle &kvMemHandle, int blockIndex, ResponseMessage &res_msg, int currModTail, size_t num_keys, void* keys_buffer, RequestMessage* p_req_msg_cpy);
 
         void process_kv_request(KVMemHandle &kvMemHandle, int blockIndex, ResponseMessage *res_msg_arr, int currTail, RequestMessage &req_msg);
 

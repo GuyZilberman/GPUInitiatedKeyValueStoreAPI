@@ -59,6 +59,7 @@
         "__config": "cpp",
         "future": "cpp",
         "bitset": "cpp",
-        "codecvt": "cpp"
+        "codecvt": "cpp",
+        "__nullptr": "cpp"
     }
 }
