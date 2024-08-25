@@ -67,11 +67,17 @@ KVMemHandle::KVMemHandle()
 // RequestMessage
 
 RequestMessage::RequestMessage(int keySize) : keySize(keySize) {
+    allocationType = AllocationType::SHARED_CPU_MEMORY;
     CUDA_ERRCHECK(cudaHostAlloc(&key, keySize * sizeof(unsigned char), cudaHostAllocMapped));
 }
 
-RequestMessage::~RequestMessage(){
-    CUDA_ERRCHECK(cudaFreeHost(key));
+RequestMessage::~RequestMessage() {
+    if(allocationType == AllocationType::SHARED_CPU_MEMORY){
+        CUDA_ERRCHECK(cudaFreeHost(key));
+    }
+    else if(allocationType == AllocationType::CPU_MEMORY){
+        delete[] static_cast<unsigned char*>(key);
+    }
 }
 
 RequestMessage::RequestMessage(const RequestMessage& other) 
@@ -84,8 +90,14 @@ RequestMessage::RequestMessage(const RequestMessage& other)
     incrementSize(other.incrementSize), 
     ticket(other.ticket) 
     {
-    CUDA_ERRCHECK(cudaHostAlloc(&key, keySize * sizeof(unsigned char), cudaHostAllocMapped));
-    CUDA_ERRCHECK(cudaMemcpy(key, other.key, keySize * sizeof(unsigned char), cudaMemcpyHostToHost));
+    allocationType = AllocationType::CPU_MEMORY;
+    key = static_cast<void*>(new unsigned char[keySize]);
+
+    // CUDA_ERRCHECK(cudaHostAlloc(&key, keySize * sizeof(unsigned char), cudaHostAllocMapped));
+    for (size_t i = 0; i < keySize; i++)
+    {
+        ((unsigned char*)key)[i]= ((unsigned char*) other.key)[i];
+    }
 }
 
 // DataBank

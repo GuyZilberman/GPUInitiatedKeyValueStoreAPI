@@ -15,7 +15,7 @@
 #define VALUE_SIZE 4096
 #endif
 #define DATA_ARR_SIZE (VALUE_SIZE / sizeof(int))
-#define NUM_ITERATIONS 10
+#define NUM_ITERATIONS 2000
 #define DEFAULT_NUM_THREAD_BLOCKS 70
 #define DEFAULT_W_MODE "d"
 #define DEFAULT_R_KERNEL "sync"

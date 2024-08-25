@@ -80,12 +80,14 @@ enum class KVStatusType {
 };
 
 enum class AllocationType {
+    CPU_MEMORY,
     SHARED_GPU_MEMORY,
     SHARED_CPU_MEMORY
 };
 
 struct RequestMessage {
-	uint request_id;
+	AllocationType allocationType;
+    uint request_id;
 	CommandType cmd;
 	void *key;
     int keySize;
