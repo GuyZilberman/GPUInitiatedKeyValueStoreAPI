@@ -5,6 +5,7 @@
 #include <vector>
 #include <cuda/atomic>
 #include <future>
+#include <yaml-cpp/yaml.h>
 #include "gdrapi.h"
 #include "gdr_gpu_memalloc.cuh"
 

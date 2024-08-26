@@ -17,3 +17,10 @@ BENCHMARK_OBJS = $(BENCHMARK_SRCS:$(SRC_DIR)/%.cu=$(BUILD_DIR)/%.o)
 
 # Generate dependency files
 DEPS = $(KV_LIB_OBJS:.o=.d) $(BENCHMARK_OBJS:.o=.d)
+
+# Set the parent directory
+PARENT_DIR := "$(BUILD_DIR)/.."
+
+# Set the include and library paths for yaml-cpp
+YAML_CPP_INC := -I$(PARENT_DIR)/include
+YAML_CPP_LIB := $(PARENT_DIR)/libs/libyaml-cpp.a

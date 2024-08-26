@@ -3,8 +3,10 @@ CC = nvcc
 CXX = nvcc
 CFLAGS = -arch=sm_80 -I. ${PLIOPS_CFLAGS} -I${COMMON_DIR} -I${KV_STORE_DIR}
 LFLAGS = -L. ${PLIOPS_LFLAGS} -lrt -lpthread -lcuda -lgdrapi -ltbb 
-LIBS = -lkey_value_store
+KV_APP_LIBS = -lkey_value_store
 DEBUG_FLAGS = -G -g
+CONFIG_YAML_PATH := $(CURDIR)/cfg/config.yaml
+CFLAGS += -DCONFIG_YAML_PATH=\"$(CONFIG_YAML_PATH)\"
 
 # Conditional flags
 ifdef DEBUG

@@ -733,7 +733,9 @@ KeyValueStore::KeyValueStore(const int numThreadBlocks, const int blockSize, int
     this->blockSize = blockSize;
     this->pKVMemHandle = &kvMemHandle;
 
-    queueSize = readEnvVar("QUEUE_SIZE");
+    YAML::Node config = YAML::LoadFile(CONFIG_YAML_PATH);
+    queueSize = config["RUNTIME"]["KV_STORE"]["QUEUE_SIZE"].as<int>();
+
     if(!checkParameters(queueSize, maxValueSize, maxNumKeys, maxKeySize))
         throw std::runtime_error("Error: Invalid parameters");
 

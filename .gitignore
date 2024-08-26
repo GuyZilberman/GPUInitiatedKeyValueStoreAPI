@@ -7,9 +7,14 @@ log*
 *.o
 *.d
 compile_commands.json
-build
 README.md
 
 # test artifacts
 results*
 *.csv
+
+# directories
+build
+include
+libs
+dependencies
