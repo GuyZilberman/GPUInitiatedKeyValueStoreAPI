@@ -6,6 +6,7 @@
 #include <curand.h>
 #include <curand_kernel.h>
 #include <algorithm>
+#include <fstream>
 
 // Customizable definitions
 #ifndef NUM_KEYS
@@ -15,7 +16,7 @@
 #define VALUE_SIZE 4096
 #endif
 #define DATA_ARR_SIZE (VALUE_SIZE / sizeof(int))
-#define NUM_ITERATIONS 2000
+#define NUM_ITERATIONS 500
 #define DEFAULT_NUM_THREAD_BLOCKS 70
 #define DEFAULT_W_MODE "d"
 #define DEFAULT_R_KERNEL "sync"
@@ -26,6 +27,9 @@
 #define GET_START_ID NUM_ITERATIONS
 #define GET_END_ID 2*NUM_ITERATIONS-1
 
+// Set global variables for logging
+YAML::Node root;
+std::string yaml_output_filename = "log_output.yaml";
 struct UserResources {
     int key;
     unsigned int keySize = sizeof(int);
@@ -63,6 +67,11 @@ struct UserResources {
 
 };
 
+void saveYAMLToFile() {
+    std::ofstream fout(yaml_output_filename);
+    fout << root;
+    fout.close();
+}
 __global__
 void ResetIndex(UserResources* d_userResources){
     int blockIndex = blockIdx.x;
@@ -344,6 +353,21 @@ void sync_and_measure_time(Func&& func, const std::string& funcName, int numThre
     std::cout << "Effective Bandwidth (GB/s): " << bandwidth << std::endl;
     std::cout << "IOPS: " << iops << std::endl;
     std::cout << "---------------------------------------" << std::endl;
+
+    // Set different precision for each value
+    std::ostringstream oss;
+
+    oss << std::fixed << std::setprecision(2) << duration;
+    root[funcName]["elapsed_time [s]"] = oss.str();
+
+    oss.str(""); // Clear the stream
+    oss << std::fixed << std::setprecision(2) << bandwidth;
+    root[funcName]["effective_bandwidth [GB/s]"] = oss.str();
+
+    oss.str(""); // Clear the stream
+    oss << std::fixed << std::setprecision(0) << iops;
+    root[funcName]["IOPS"] = oss.str();
+    saveYAMLToFile();
 }
 
 void appPutHCalls(int numThreadBlocks, KeyValueStore *kvStore){
@@ -439,6 +463,15 @@ void printSettings(int numThreadBlocks, int blockSize, const std::string &wMode,
     std::cout << "NUM_KEYS: " << NUM_KEYS << std::endl;
     std::cout << "DATA_ARR_SIZE: " << DATA_ARR_SIZE << std::endl;
     std::cout << "---------------------------------------" << std::endl;
+
+    root["Settings"]["numThreadBlocks"] = numThreadBlocks;
+    root["Settings"]["blockSize"] = blockSize;
+    root["Settings"]["wMode"] = wMode;
+    root["Settings"]["rKernel"] = rKernel;
+    root["Settings"]["NUM_ITERATIONS"] = NUM_ITERATIONS;
+    root["Settings"]["CONCURRENT_COUNT"] = CONCURRENT_COUNT;
+    root["Settings"]["NUM_KEYS"] = NUM_KEYS;
+    root["Settings"]["DATA_ARR_SIZE"] = DATA_ARR_SIZE;
 }
 
 int main(int argc, char* argv[]) {
@@ -448,6 +481,7 @@ int main(int argc, char* argv[]) {
     std::string rKernel = DEFAULT_R_KERNEL;
     parseArguments(argc, argv, numThreadBlocks, wMode, rKernel);
     printSettings(numThreadBlocks, blockSize, wMode, rKernel);
+    saveYAMLToFile();
 
     KVMemHandle kvMemHandle;
 
