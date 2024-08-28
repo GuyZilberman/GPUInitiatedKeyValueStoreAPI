@@ -462,6 +462,7 @@ void printSettings(int numThreadBlocks, int blockSize, const std::string &wMode,
     std::cout << "CONCURRENT_COUNT: " << CONCURRENT_COUNT << std::endl;
     std::cout << "NUM_KEYS: " << NUM_KEYS << std::endl;
     std::cout << "DATA_ARR_SIZE: " << DATA_ARR_SIZE << std::endl;
+    std::cout << "GIT_HASH: " << GIT_HASH << std::endl;
     std::cout << "---------------------------------------" << std::endl;
 
     root["Settings"]["numThreadBlocks"] = numThreadBlocks;
@@ -472,6 +473,8 @@ void printSettings(int numThreadBlocks, int blockSize, const std::string &wMode,
     root["Settings"]["CONCURRENT_COUNT"] = CONCURRENT_COUNT;
     root["Settings"]["NUM_KEYS"] = NUM_KEYS;
     root["Settings"]["DATA_ARR_SIZE"] = DATA_ARR_SIZE;
+    root["Settings"]["GIT_HASH"] = GIT_HASH;
+
 }
 
 int main(int argc, char* argv[]) {

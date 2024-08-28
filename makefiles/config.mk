@@ -7,6 +7,8 @@ KV_APP_LIBS = -lkey_value_store
 DEBUG_FLAGS = -G -g
 CONFIG_YAML_PATH := $(CURDIR)/cfg/config.yaml
 CFLAGS += -DCONFIG_YAML_PATH=\"$(CONFIG_YAML_PATH)\"
+GIT_HASH := $(shell git rev-parse --short HEAD)
+CFLAGS += -DGIT_HASH=\"$(GIT_HASH)\"
 
 # Conditional flags
 ifdef DEBUG

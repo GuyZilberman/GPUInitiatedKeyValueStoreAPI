@@ -6,6 +6,7 @@ import os
 import argparse
 from datetime import datetime
 import csv
+import yaml
 
 SLEEP_TIME = 10
 
@@ -26,8 +27,8 @@ USE_STORELIB_LOOPBACK = args.mode == 'STORELIB_LOOPBACK'
 rk_mode = args.rk
 
 # Define the range of VALUE_SIZEs and thread blocks
-value_sizes = [4096, 12288]
-thread_blocks = [1, 2, 4, 8, 16, 32, 64, 72, 80]
+value_sizes = [512]
+thread_blocks = [1]
 NUM_KEYS = 512
 NUM_RUNS_PER_TB_SIZE = 3
 
@@ -41,7 +42,21 @@ def run_command(command, print_output=False):
         return output
     except subprocess.CalledProcessError as e:
         print(f"Command failed with {e.returncode}: {e.output}")
-        return None
+        exit(1)
+
+# Load data from the YAML file
+def load_yaml_data(yaml_file):
+    with open(yaml_file, 'r') as file:
+        data = yaml.safe_load(file)
+    return data
+
+# Save metadata excluding 'numThreadBlocks'
+def save_metadata(yaml_data, metadata_file):
+    settings = yaml_data.get('Settings', {})
+    if 'numThreadBlocks' in settings:
+        settings.pop('numThreadBlocks')
+    with open(metadata_file, 'w') as file:
+        yaml.dump({'Settings': settings}, file)
 
 # Determine the directory name based on script settings and current date-time
 def directory_name():
@@ -64,6 +79,9 @@ def directory_name():
 # Create directory if it does not exist
 output_dir = directory_name()
 os.makedirs(output_dir, exist_ok=True)
+
+# Metadata file to save settings
+metadata_file = os.path.join(output_dir, 'metadata.yaml')
 
 # Iterate over each VALUE_SIZE
 for size in value_sizes:
@@ -98,6 +116,8 @@ for size in value_sizes:
     for cmd in build_commands:
         run_command(cmd, print_output=True)
     
+    first_run = True
+    
     # Run the application with each --tb value
     for tb in thread_blocks:
         write_times = []
@@ -110,23 +130,25 @@ for size in value_sizes:
         # Run kvapp several times
         for _ in range(NUM_RUNS_PER_TB_SIZE):
             command = f"sudo -E ./kvapp --tb {tb} --rk {rk_mode}"
-            output = run_command(command)
-            
-            # Parse and store necessary output from the command
-            runtime_write = float(output.split('Elapsed Time (second):')[1].split('Effective Bandwidth')[0].strip())
-            runtime_read = float(output.split('Elapsed Time (second):')[2].split('Effective Bandwidth')[0].strip())
-            bandwidth_write = float(output.split('Effective Bandwidth (GB/s):')[1].split('IOPS')[0].strip())
-            bandwidth_read = float(output.split('Effective Bandwidth (GB/s):')[2].split('IOPS')[0].strip())
-            iops_write = float(output.split('IOPS:')[1].split('\n')[0].strip())
-            iops_read = float(output.split('IOPS:')[2].split('\n')[0].strip())
-            
-            # Append times, bandwidths, and IOPS for median calculation
-            write_times.append(runtime_write)
-            read_times.append(runtime_read)
-            write_bandwidths.append(bandwidth_write)
-            read_bandwidths.append(bandwidth_read)
-            write_iops.append(iops_write)
-            read_iops.append(iops_read)
+            run_command(command)
+
+            # Load the results from YAML file
+            yaml_data = load_yaml_data('log_output.yaml')
+
+            if first_run:
+                save_metadata(yaml_data, metadata_file)
+                first_run = False
+
+            write_results = yaml_data.get('write_kernel', {})
+            read_results = yaml_data.get('read_kernel', {}) if rk_mode == 'sync' else yaml_data.get('async_read_kernel_3phase', {})
+
+            # Extract and store necessary output from the YAML data
+            write_times.append(float(write_results.get('elapsed_time [s]', 0)))
+            read_times.append(float(read_results.get('elapsed_time [s]', 0)))
+            write_bandwidths.append(float(write_results.get('effective_bandwidth [GB/s]', 0)))
+            read_bandwidths.append(float(read_results.get('effective_bandwidth [GB/s]', 0)))
+            write_iops.append(float(write_results.get('IOPS', 0)))
+            read_iops.append(float(read_results.get('IOPS', 0)))
 
             # Sleep to allow the XDP to be ready
             time.sleep(SLEEP_TIME)

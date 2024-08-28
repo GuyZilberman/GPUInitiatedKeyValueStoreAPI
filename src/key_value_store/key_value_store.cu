@@ -32,7 +32,7 @@ int readEnvVar(const char* varName) {
     const char *env_var = std::getenv(varName);
     if (env_var == NULL) {
         std::cout << "The environment variable " << varName << " is not set.\n";
-        return 0;
+        std::exit(EXIT_FAILURE);
     }
     return std::atoi(env_var);
 }
