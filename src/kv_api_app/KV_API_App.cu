@@ -244,13 +244,6 @@ void read_kernel(KeyValueStore *kvStore, UserResources* d_userResources, const i
     int wrong_answers = 0;
 #endif
 
-#ifdef MEASURE_RW_LOOPS
-    BEGIN_THREAD_ZERO {
-        userResources.idx = 0;
-        clock_t start2, end2;
-        start2 = clock();
-    } END_THREAD_ZERO
-#endif
     // Send multiget requests after multiput requests
     while (userResources.idx < numIterations){
         BEGIN_THREAD_ZERO {
@@ -272,13 +265,6 @@ void read_kernel(KeyValueStore *kvStore, UserResources* d_userResources, const i
 #endif
     }
 
-#ifdef MEASURE_RW_LOOPS
-    BEGIN_THREAD_ZERO {
-        end2 = clock();
-        clock_t elapsedCycles2 = end2 - start2;
-        printf("Total get clocks = %ld\n", (long int)elapsedCycles2);
-    } END_THREAD_ZERO
-#endif
 }
 
 __global__
@@ -287,13 +273,6 @@ void write_kernel(KeyValueStore *kvStore, UserResources* d_userResources, const 
     int tid = THREAD_ID;
                     
     UserResources &userResources = d_userResources[blockIndex];
-
-#ifdef MEASURE_RW_LOOPS
-    clock_t start1, end1, start2, end2;
-    BEGIN_THREAD_ZERO {    
-        start1 = clock();
-    } END_THREAD_ZERO
-#endif
     // Send multiput requests 
     while (userResources.idx < numIterations){       
         BEGIN_THREAD_ZERO {
@@ -311,11 +290,6 @@ void write_kernel(KeyValueStore *kvStore, UserResources* d_userResources, const 
         kvStore->KVMultiPutD((void**)userResources.keys, sizeof(int), (void**)userResources.buffs, sizeof(int) * DATA_ARR_SIZE, userResources.KVStatus, NUM_KEYS);
     }
     BEGIN_THREAD_ZERO {
-#ifdef MEASURE_RW_LOOPS
-    end1 = clock();
-    clock_t elapsedCycles1 = end1 - start1;
-    printf("Total put clocks = %ld\n", (long int)elapsedCycles1);
-#endif
     }
 }
 

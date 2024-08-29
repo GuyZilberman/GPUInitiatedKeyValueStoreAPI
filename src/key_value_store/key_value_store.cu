@@ -87,7 +87,7 @@ RequestMessage::RequestMessage(const RequestMessage& other)
     buffs(other.buffs),
     buffSize(other.buffSize), 
     KVStatus(other.KVStatus),
-    incrementSize(other.incrementSize), 
+    numKeys(other.numKeys), 
     ticket(other.ticket) 
     {
     allocationType = AllocationType::CPU_MEMORY;
@@ -153,13 +153,13 @@ void HostAllocatedSubmissionQueue::incrementTail(ThreadBlockResources* d_tbResou
 }
 
 __device__ 
-inline void HostAllocatedSubmissionQueue::setRequestMessage(int idx, CommandType cmd, uint &request_id, void* key, int keySize, int incrementSize) {
+inline void HostAllocatedSubmissionQueue::setRequestMessage(int idx, CommandType cmd, uint &request_id, void* key, int keySize, int numKeys) {
     req_msg_arr[idx].cmd = cmd;
     req_msg_arr[idx].request_id = request_id++;
     for(size_t i = 0; i < keySize; i++)
         ((unsigned char*)(req_msg_arr[idx].key))[i] = ((unsigned char*)key)[i];
     req_msg_arr[idx].keySize = keySize;
-    req_msg_arr[idx].incrementSize = incrementSize;
+    req_msg_arr[idx].numKeys = numKeys;
 }
 
 HostAllocatedSubmissionQueue::HostAllocatedSubmissionQueue(gdr_mh_t &mh, int queueSize, int maxKeySize) :
@@ -180,112 +180,112 @@ HostAllocatedSubmissionQueue::~HostAllocatedSubmissionQueue(){
 }
 
 __device__
-void HostAllocatedSubmissionQueue::copyMetaDataDelete(ThreadBlockResources* d_tbResources, CommandType cmd, uint &request_id, void** keys, int keySize, int incrementSize, int &tid){
+void HostAllocatedSubmissionQueue::copyMetaDataDelete(ThreadBlockResources* d_tbResources, CommandType cmd, uint &request_id, void** keys, int keySize, int numKeys, int &tid){
     int idx;
     int blockSize = blockDim.x;
-    for (int i = tid; i < incrementSize; i += blockSize) 
+    for (int i = tid; i < numKeys; i += blockSize) 
     {    
         idx = (d_tbResources->currModTail + i) % this->queueSize;
-        setRequestMessage(idx, cmd, request_id, keys[i], keySize, incrementSize);
+        setRequestMessage(idx, cmd, request_id, keys[i], keySize, numKeys);
     }
 }
 
 __device__
-void HostAllocatedSubmissionQueue::copyMetaDataPutAndGet(ThreadBlockResources* d_tbResources, CommandType cmd, uint &request_id, void** keys, int keySize, int buffSize, int incrementSize, int &tid){
+void HostAllocatedSubmissionQueue::copyMetaDataPutAndGet(ThreadBlockResources* d_tbResources, CommandType cmd, uint &request_id, void** keys, int keySize, int buffSize, int numKeys, int &tid){
     int idx;
     int blockSize = blockDim.x;
-    for (int i = tid; i < incrementSize; i += blockSize) 
+    for (int i = tid; i < numKeys; i += blockSize) 
     {    
         idx = (d_tbResources->currModTail + i) % this->queueSize;
-        setRequestMessage(idx, cmd, request_id, keys[i], keySize, incrementSize);
+        setRequestMessage(idx, cmd, request_id, keys[i], keySize, numKeys);
         req_msg_arr[idx].buffSize = buffSize;
     }
 }
 
 __device__
-void HostAllocatedSubmissionQueue::copyMetaDataAsyncGet(ThreadBlockResources* d_tbResources, CommandType cmd, uint &request_id, void** keys, int keySize, void** buffs, int buffSize, KVStatusType KVStatus[], int incrementSize, int &tid){
+void HostAllocatedSubmissionQueue::copyMetaDataAsyncGet(ThreadBlockResources* d_tbResources, CommandType cmd, uint &request_id, void** keys, int keySize, void** buffs, int buffSize, KVStatusType KVStatus[], int numKeys, int &tid){
     int idx;
     int blockSize = blockDim.x;
     // Assigned by all threads in the thread block
     req_msg_arr[d_tbResources->currModTail].buffSize = buffSize;
     req_msg_arr[d_tbResources->currModTail].buffs = buffs;
     req_msg_arr[d_tbResources->currModTail].KVStatus = KVStatus;
-    for (int i = tid; i < incrementSize; i += blockSize) 
+    for (int i = tid; i < numKeys; i += blockSize) 
     {    
         idx = (d_tbResources->currModTail + i) % this->queueSize;
-        setRequestMessage(idx, cmd, request_id, keys[i], keySize, incrementSize);
+        setRequestMessage(idx, cmd, request_id, keys[i], keySize, numKeys);
     }
 }
 
 __device__ 
-bool HostAllocatedSubmissionQueue::push_put(ThreadBlockResources* d_tbResources, int &tid, DataBank* d_databank_p, CommandType cmd, uint &request_id, void** keys, int keySize, int buffSize, void** buffs, int incrementSize) {
-    if (getTailAndCheckFull(d_tbResources, tid, incrementSize))
+bool HostAllocatedSubmissionQueue::push_put(ThreadBlockResources* d_tbResources, int &tid, DataBank* d_databank_p, CommandType cmd, uint &request_id, void** keys, int keySize, int buffSize, void** buffs, int numKeys) {
+    if (getTailAndCheckFull(d_tbResources, tid, numKeys))
         return false;
 
     int idx;
-    for (size_t i = 0; i < incrementSize; i++)
+    for (size_t i = 0; i < numKeys; i++)
     {
         idx = ((d_tbResources->currModTail + i) % this->queueSize) * d_databank_p->maxValueSize;
         copyData((unsigned char*)(&d_databank_p->data[idx]), (const unsigned char*)buffs[i], buffSize, tid);
     }
 
-    copyMetaDataPutAndGet(d_tbResources, cmd, request_id, keys, keySize, buffSize, incrementSize, tid);
+    copyMetaDataPutAndGet(d_tbResources, cmd, request_id, keys, keySize, buffSize, numKeys, tid);
     BEGIN_THREAD_ZERO { 
-        incrementTail(d_tbResources, incrementSize);
+        incrementTail(d_tbResources, numKeys);
     } END_THREAD_ZERO
 
     return true;
 }
 
 __device__ 
-bool HostAllocatedSubmissionQueue::push_get(ThreadBlockResources* d_tbResources, int &tid, CommandType cmd, uint &request_id, void** keys, int keySize, int buffSize, int incrementSize) {
-    if (getTailAndCheckFull(d_tbResources, tid, incrementSize))
+bool HostAllocatedSubmissionQueue::push_get(ThreadBlockResources* d_tbResources, int &tid, CommandType cmd, uint &request_id, void** keys, int keySize, int buffSize, int numKeys) {
+    if (getTailAndCheckFull(d_tbResources, tid, numKeys))
         return false;
 
-    copyMetaDataPutAndGet(d_tbResources, cmd, request_id, keys, keySize, buffSize, incrementSize, tid);
+    copyMetaDataPutAndGet(d_tbResources, cmd, request_id, keys, keySize, buffSize, numKeys, tid);
     BEGIN_THREAD_ZERO { 
-        incrementTail(d_tbResources, incrementSize);
+        incrementTail(d_tbResources, numKeys);
     } END_THREAD_ZERO
 
     return true; 
 }
 
 __device__ 
-bool HostAllocatedSubmissionQueue::push_async_get_initiate(ThreadBlockResources* d_tbResources, int &tid, CommandType cmd, uint &request_id, void** keys, int keySize, void** buffs, int buffSize, KVStatusType KVStatus[], int incrementSize) {
-    if (getTailAndCheckFull(d_tbResources, tid, incrementSize))
+bool HostAllocatedSubmissionQueue::push_async_get_initiate(ThreadBlockResources* d_tbResources, int &tid, CommandType cmd, uint &request_id, void** keys, int keySize, void** buffs, int buffSize, KVStatusType KVStatus[], int numKeys) {
+    if (getTailAndCheckFull(d_tbResources, tid, numKeys))
         return false;
 
-    copyMetaDataAsyncGet(d_tbResources, cmd, request_id, keys, keySize, buffs, buffSize, KVStatus, incrementSize, tid);
+    copyMetaDataAsyncGet(d_tbResources, cmd, request_id, keys, keySize, buffs, buffSize, KVStatus, numKeys, tid);
     BEGIN_THREAD_ZERO { 
-        incrementTail(d_tbResources, incrementSize);
+        incrementTail(d_tbResources, numKeys);
     } END_THREAD_ZERO
 
     return true; 
 }
 
 __device__ 
-bool HostAllocatedSubmissionQueue::push_delete(ThreadBlockResources* d_tbResources, int &tid, CommandType cmd, uint &request_id, void** keys, int keySize, int incrementSize) {
-    if (getTailAndCheckFull(d_tbResources, tid, incrementSize))
+bool HostAllocatedSubmissionQueue::push_delete(ThreadBlockResources* d_tbResources, int &tid, CommandType cmd, uint &request_id, void** keys, int keySize, int numKeys) {
+    if (getTailAndCheckFull(d_tbResources, tid, numKeys))
         return false;
 
-    copyMetaDataDelete(d_tbResources, cmd, request_id, keys, keySize, incrementSize, tid); 
+    copyMetaDataDelete(d_tbResources, cmd, request_id, keys, keySize, numKeys, tid); 
     BEGIN_THREAD_ZERO {    
-        incrementTail(d_tbResources, incrementSize);
+        incrementTail(d_tbResources, numKeys);
     } END_THREAD_ZERO
 
     return true;
 }
 
 __device__ 
-bool HostAllocatedSubmissionQueue::push_no_data(ThreadBlockResources* d_tbResources, int &tid, CommandType cmd, uint &request_id, int ticket, int incrementSize) {
-    if (getTailAndCheckFull(d_tbResources, tid, incrementSize))
+bool HostAllocatedSubmissionQueue::push_no_data(ThreadBlockResources* d_tbResources, int &tid, CommandType cmd, uint &request_id, int ticket, int numKeys) {
+    if (getTailAndCheckFull(d_tbResources, tid, numKeys))
         return false;
     BEGIN_THREAD_ZERO {
         req_msg_arr[d_tbResources->currModTail].ticket = ticket;
         req_msg_arr[d_tbResources->currModTail].cmd = cmd;
         req_msg_arr[d_tbResources->currModTail].request_id = request_id;
-        req_msg_arr[d_tbResources->currModTail].incrementSize = incrementSize;
-        incrementTail(d_tbResources, incrementSize);
+        req_msg_arr[d_tbResources->currModTail].numKeys = numKeys;
+        incrementTail(d_tbResources, numKeys);
     } END_THREAD_ZERO
 
     return true;
@@ -298,7 +298,7 @@ bool HostAllocatedSubmissionQueue::pop(int &currModHead) {
         return false; // Queue empty
     }
     currModHead = currHead % this->queueSize;
-    int incrementSize = req_msg_arr[currModHead].incrementSize;
+    int incrementSize = req_msg_arr[currModHead].numKeys;
     head.store(currHead + incrementSize, cuda::memory_order_release);
     return true;
 }
@@ -316,7 +316,7 @@ void DeviceAllocatedCompletionQueue::copyResponseMessage(ThreadBlockResources* d
 }
 
 __device__
-bool DeviceAllocatedCompletionQueue::getHeadAndCheckEmpty(ThreadBlockResources* d_tbResources, int &tid, int &incrementSize){
+bool DeviceAllocatedCompletionQueue::getHeadAndCheckEmpty(ThreadBlockResources* d_tbResources, int &tid){
     BEGIN_THREAD_ZERO {
         d_tbResources->currHead = head.load(cuda::memory_order_relaxed); //TODO guy CS AFTER?
         d_tbResources->isQueueEmpty = d_tbResources->currHead == tail.load(cuda::memory_order_acquire);
@@ -361,7 +361,7 @@ DeviceAllocatedCompletionQueue::~DeviceAllocatedCompletionQueue() {
 
 __host__
 bool DeviceAllocatedCompletionQueue::push(KeyValueStore *kvStore, KVMemHandle &kvMemHandle, int blockIndex, int currModHead, RequestMessage &req_msg) {
-    int incrementSize = req_msg.incrementSize;
+    int incrementSize = req_msg.numKeys;
     int currTail = tail.load(cuda::memory_order_relaxed);
     if (currTail - head.load(cuda::memory_order_acquire) + incrementSize - 1 >= this->queueSize) {
         return false; // Queue full
@@ -372,56 +372,56 @@ bool DeviceAllocatedCompletionQueue::push(KeyValueStore *kvStore, KVMemHandle &k
 }
 
 __device__ 
-bool DeviceAllocatedCompletionQueue::pop_get(ThreadBlockResources* d_tbResources, void* buffs[], int buffSize, int &tid, DataBank* d_databank_p, CommandType cmd, KVStatusType KVStatus[], int incrementSize) {
-    if (getHeadAndCheckEmpty(d_tbResources, tid, incrementSize))
+bool DeviceAllocatedCompletionQueue::pop_get(ThreadBlockResources* d_tbResources, void* buffs[], int buffSize, int &tid, DataBank* d_databank_p, CommandType cmd, KVStatusType KVStatus[], int numKeys) {
+    if (getHeadAndCheckEmpty(d_tbResources, tid))
         return false; 
 
     unsigned char* d_data_p = (unsigned char*)d_databank_p->sharedGPUDataBank.getDevicePtr();
     int idx;
-    for (size_t i = 0; i < incrementSize; i++)
+    for (size_t i = 0; i < numKeys; i++)
     {
         idx = ((d_tbResources->currModTail + i) % this->queueSize) * d_databank_p->maxValueSize;
-        copyData((unsigned char*)buffs[i], (const unsigned char*)(&d_data_p[idx]), buffSize, tid); // TODO for loop of size incrementSize here?
+        copyData((unsigned char*)buffs[i], (const unsigned char*)(&d_data_p[idx]), buffSize, tid);
     }
-    copyResponseMessage(d_tbResources, tid, incrementSize, KVStatus);
+    copyResponseMessage(d_tbResources, tid, numKeys, KVStatus);
     BEGIN_THREAD_ZERO {
-        incrementHead(d_tbResources, incrementSize);
+        incrementHead(d_tbResources, numKeys);
     } END_THREAD_ZERO
     return true;
 }
 
 __device__ 
-bool DeviceAllocatedCompletionQueue::pop_default(ThreadBlockResources* d_tbResources, int &tid, KVStatusType KVStatus[], int incrementSize) {
-    if (getHeadAndCheckEmpty(d_tbResources, tid, incrementSize))
+bool DeviceAllocatedCompletionQueue::pop_default(ThreadBlockResources* d_tbResources, int &tid, KVStatusType KVStatus[], int numKeys) {
+    if (getHeadAndCheckEmpty(d_tbResources, tid))
         return false; 
 
-    copyResponseMessage(d_tbResources, tid, incrementSize, KVStatus);
+    copyResponseMessage(d_tbResources, tid, numKeys, KVStatus);
     BEGIN_THREAD_ZERO {
-        incrementHead(d_tbResources, incrementSize);
+        incrementHead(d_tbResources, numKeys);
     } END_THREAD_ZERO
     return true;
 }
 
 __device__ 
-bool DeviceAllocatedCompletionQueue::pop_no_res_msg(ThreadBlockResources* d_tbResources, int &tid, int incrementSize) {
-    if (getHeadAndCheckEmpty(d_tbResources, tid, incrementSize))
+bool DeviceAllocatedCompletionQueue::pop_no_res_msg(ThreadBlockResources* d_tbResources, int &tid, int numKeys) {
+    if (getHeadAndCheckEmpty(d_tbResources, tid))
         return false; 
 
     BEGIN_THREAD_ZERO {
-        incrementHead(d_tbResources, incrementSize);
+        incrementHead(d_tbResources, numKeys);
     } END_THREAD_ZERO
     return true;
 }
 
 __device__ 
-bool DeviceAllocatedCompletionQueue::pop_async_get_init(ThreadBlockResources* d_tbResources, int &tid, unsigned int *p_ticket, int incrementSize) {
-    if (getHeadAndCheckEmpty(d_tbResources, tid, incrementSize))
+bool DeviceAllocatedCompletionQueue::pop_async_get_init(ThreadBlockResources* d_tbResources, int &tid, unsigned int *p_ticket, int numKeys) {
+    if (getHeadAndCheckEmpty(d_tbResources, tid))
         return false; 
 
     *p_ticket = d_tbResources->currTail;
 
     BEGIN_THREAD_ZERO {
-        incrementHead(d_tbResources, incrementSize);
+        incrementHead(d_tbResources, numKeys);
     } END_THREAD_ZERO
     return true;
 }
@@ -598,7 +598,7 @@ void KeyValueStore::process_kv_request(KVMemHandle &kvMemHandle, int blockIndex,
     int &queueSize = submission_queue->queueSize;
 
 #endif
-    size_t num_keys = req_msg.incrementSize;
+    size_t num_keys = req_msg.numKeys;
 
 #ifdef STORELIB_LOOPBACK
 #elif defined(IN_MEMORY_STORE)
@@ -729,6 +729,12 @@ bool KeyValueStore::checkParameters(int queueSize, int maxValueSize, int maxNumK
 }
 
 KeyValueStore::KeyValueStore(const int numThreadBlocks, const int blockSize, int maxValueSize, int maxNumKeys, int maxKeySize, KVMemHandle &kvMemHandle) {            
+#ifdef IN_MEMORY_STORE
+    maxValueSize = MAX_VALUE_SIZE;
+    maxKeySize = MAX_KEY_SIZE;
+    printf("Using in-memory store preconfigured values: maxValueSize = %d, maxKeySize = %d\n", maxValueSize, maxKeySize);
+#endif
+    
     this->numThreadBlocks = numThreadBlocks;
     this->blockSize = blockSize;
     this->pKVMemHandle = &kvMemHandle;
