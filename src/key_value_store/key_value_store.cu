@@ -788,8 +788,11 @@ KeyValueStore::KeyValueStore(const int numThreadBlocks, const int blockSize, int
 }
 
 KeyValueStore::~KeyValueStore() {
-    KVExitD<<<numThreadBlocks, blockSize>>>(this);
-    CUDA_ERRCHECK(cudaDeviceSynchronize());
+    cudaStream_t stream;
+    cudaStreamCreate(&stream);
+    KVExitD<<<numThreadBlocks, blockSize, 0, stream>>>(this);
+    cudaStreamSynchronize(stream);
+    cudaStreamDestroy(stream);
 
     ThreadBlockResources* h_tbResources = (ThreadBlockResources*)malloc(numThreadBlocks * sizeof(ThreadBlockResources));
     CUDA_ERRCHECK(cudaMemcpy(h_tbResources, d_tbResources, numThreadBlocks * sizeof(ThreadBlockResources), cudaMemcpyDeviceToHost));
