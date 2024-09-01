@@ -80,7 +80,7 @@ void ResetIndex(UserResources* d_userResources){
 
 __global__
 void InitData(UserResources* d_userResources){
-    int tid = THREAD_ID;
+    const int tid = THREAD_ID;
     
     BEGIN_THREAD_ZERO {
         for (int j = 0; j < NUM_KEYS; j++)    
@@ -108,7 +108,7 @@ void InitData(UserResources* d_userResources){
 
 __device__
 void check_wrong_answer(int* actual_answer_buf, int expected_answer, int &wrong_answers) {
-    int tid = threadIdx.z * blockDim.y * blockDim.x 
+    const int tid = threadIdx.z * blockDim.y * blockDim.x 
         + threadIdx.y * blockDim.x 
         + threadIdx.x;
     BEGIN_THREAD_ZERO {
@@ -127,7 +127,7 @@ void check_wrong_answer(int* actual_answer_buf, int expected_answer, int &wrong_
 __global__
 void async_read_kernel_3phase(KeyValueStore *kvStore, UserResources* d_userResources, const int numIterations) {    
     int blockIndex = blockIdx.x;
-    int tid = threadIdx.z * blockDim.y * blockDim.x 
+    const int tid = threadIdx.z * blockDim.y * blockDim.x 
                     + threadIdx.y * blockDim.x 
                     + threadIdx.x;
                     
@@ -187,7 +187,7 @@ void async_read_kernel_3phase(KeyValueStore *kvStore, UserResources* d_userResou
 __global__
 void async_read_kernel(KeyValueStore *kvStore, UserResources* d_userResources, const int numIterations) {    
     int blockIndex = blockIdx.x;
-    int tid = threadIdx.z * blockDim.y * blockDim.x 
+    const int tid = threadIdx.z * blockDim.y * blockDim.x 
                     + threadIdx.y * blockDim.x 
                     + threadIdx.x;
                     
@@ -217,7 +217,7 @@ void async_read_kernel(KeyValueStore *kvStore, UserResources* d_userResources, c
     }
 
     BEGIN_THREAD_ZERO {
-        userResources.idx = 0; // TODO guy DELETE?
+        userResources.idx = 0;
     } END_THREAD_ZERO
 
     while (userResources.idx < CONCURRENT_COUNT){
@@ -237,7 +237,7 @@ void async_read_kernel(KeyValueStore *kvStore, UserResources* d_userResources, c
 __global__
 void read_kernel(KeyValueStore *kvStore, UserResources* d_userResources, const int numIterations) {    
     int blockIndex = blockIdx.x;
-    int tid = THREAD_ID;
+    const int tid = THREAD_ID;
                     
     UserResources &userResources = d_userResources[blockIndex];
 #ifdef CHECK_WRONG_ANSWERS
@@ -253,6 +253,7 @@ void read_kernel(KeyValueStore *kvStore, UserResources* d_userResources, const i
                         blockIndex * numIterations +
                         i * gridDim.x * numIterations;
                 userResources.keys[i] = &userResources.multiKey[i];
+                userResources.buffs[i] = userResources.dataBuffers[i];
             }  
         } END_THREAD_ZERO
 
@@ -270,7 +271,7 @@ void read_kernel(KeyValueStore *kvStore, UserResources* d_userResources, const i
 __global__
 void write_kernel(KeyValueStore *kvStore, UserResources* d_userResources, const int numIterations) {    
     int blockIndex = blockIdx.x;
-    int tid = THREAD_ID;
+    const int tid = THREAD_ID;
                     
     UserResources &userResources = d_userResources[blockIndex];
     // Send multiput requests 
@@ -316,7 +317,6 @@ void sync_and_measure_time(Func&& func, const std::string& funcName, int numThre
     auto stop = std::chrono::high_resolution_clock::now();
 
     auto duration = std::chrono::duration_cast<std::chrono::duration<double>>(stop - start).count();
-    // std::cout << "Kernel run finished: " << std::fixed << std::setprecision(2) << duration << " seconds" << std::endl;
    
     uint64_t ios = numThreadBlocks * NUM_KEYS * NUM_ITERATIONS;
     uint64_t data = ios * VALUE_SIZE;
@@ -374,11 +374,16 @@ void appPutHCalls(int numThreadBlocks, KeyValueStore *kvStore){
         }
     }
 
+    std::string funcName = "appPutHCalls";
+    std::cout << "---------------------------------------" << std::endl;
+    std::cout << "Starting (" << funcName << ")..." << std::endl;
+    auto start = std::chrono::high_resolution_clock::now();
 
     for (int blockIndex = 0; blockIndex < numThreadBlocks; blockIndex++)
     {    
         int idx = 0;
-        while (idx < numIterations){       
+        while (idx < numIterations){
+            idx++;       
             for (int i = 0; i < NUM_KEYS; i++) {
                 dataBuffers[i][0] = idx;
                 buffs[i] = dataBuffers[i];
@@ -391,16 +396,68 @@ void appPutHCalls(int numThreadBlocks, KeyValueStore *kvStore){
             for (int i = 0; i < NUM_KEYS; i++){
                 kvStore->KVPutH(keys[i], sizeof(int), buffs[i], sizeof(int) * DATA_ARR_SIZE, KVStatus[i]);
             }
-            idx++;
         }
+    }
+
+    auto stop = std::chrono::high_resolution_clock::now();
+
+    auto duration = std::chrono::duration_cast<std::chrono::duration<double>>(stop - start).count();
+   
+    uint64_t ios = numThreadBlocks * NUM_KEYS * NUM_ITERATIONS;
+    uint64_t data = ios * VALUE_SIZE;
+    double bandwidth = (((double)data)/duration)/(1000ULL*1000ULL*1000ULL);
+    double iops = ((double)ios)/duration;
+ 
+    std::cout << std::dec << "Elapsed Time (second): " << std::fixed << std::setprecision(2) << duration << std::endl;
+    std::cout << "Effective Bandwidth (GB/s): " << bandwidth << std::endl;
+    std::cout << "IOPS: " << iops << std::endl;
+    std::cout << "---------------------------------------" << std::endl;
+
+    // Set different precision for each value
+    std::ostringstream oss;
+
+    oss << std::fixed << std::setprecision(2) << duration;
+    root[funcName]["elapsed_time [s]"] = oss.str();
+
+    oss.str(""); // Clear the stream
+    oss << std::fixed << std::setprecision(2) << bandwidth;
+    root[funcName]["effective_bandwidth [GB/s]"] = oss.str();
+
+    oss.str(""); // Clear the stream
+    oss << std::fixed << std::setprecision(0) << iops;
+    root[funcName]["IOPS"] = oss.str();
+    saveYAMLToFile();
+}
+
+struct Option {
+    std::string flag;
+    std::string description;
+};
+
+void showHelp(const std::vector<Option> &options) {
+    std::cout << "Available options:\n";
+    for (const auto &opt : options) {
+        std::cout << "  " << opt.flag << " : " << opt.description << "\n";
     }
 }
 
-void parseArguments(int argc, char* argv[], int &numThreadBlocks, std::string &wMode, std::string &rKernel){
+void parseArguments(int argc, char* argv[], int &numThreadBlocks, std::string &wMode, std::string &rKernel) {
+    std::vector<Option> options = {
+        {"--tb, --thread-blocks <num>", "Specify the number of thread blocks (e.g., --tb 4)"},
+        {"--w, --write <host|device>", "Specify write mode as host (h) or device (d) (e.g., --w host)"},
+        {"--rk, --read-kernel <sync|async>", "Specify read kernel as sync or async (e.g., --rk sync)"},
+        {"--help, -h", "Show this help message"}
+    };
+
     for (int i = 1; i < argc; ++i) {
-        if ((strcmp(argv[i], "--tb") == 0 || strcmp(argv[i], "--thread-blocks") == 0) && i + 1 < argc) {
+        if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
+            showHelp(options);
+            exit(0);
+        }
+        else if ((strcmp(argv[i], "--tb") == 0 || strcmp(argv[i], "--thread-blocks") == 0) && i + 1 < argc) {
             numThreadBlocks = std::atoi(argv[++i]);
-        } else if ((strcmp(argv[i], "--w") == 0 || strcmp(argv[i], "--write") == 0) && i + 1 < argc) {
+        }
+        else if ((strcmp(argv[i], "--w") == 0 || strcmp(argv[i], "--write") == 0) && i + 1 < argc) {
             wMode = argv[++i];
             std::transform(wMode.begin(), wMode.end(), wMode.begin(), [](unsigned char c){ return std::tolower(c); });
             if (wMode == "host" || wMode == "h")

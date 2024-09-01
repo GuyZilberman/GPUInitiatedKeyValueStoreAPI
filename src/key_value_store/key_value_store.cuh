@@ -143,13 +143,13 @@ private:
     gdr_mh_t mh;
 
     __device__
-    bool getTailAndCheckFull(ThreadBlockResources* d_tbResources, int &tid, int &incrementSize);
+    bool getTailAndCheckFull(ThreadBlockResources* d_tbResources, const int tid, int incrementSize);
 
     __device__
-    void incrementTail(ThreadBlockResources* d_tbResources, int &incrementSize);
+    void incrementTail(ThreadBlockResources* d_tbResources, int incrementSize);
 
     __device__ 
-    inline void setRequestMessage(int idx, CommandType cmd, uint &request_id, void* key, int keySize, int numKeys);
+    inline void setRequestMessage(int idx, CommandType cmd, uint request_id, void* key, int keySize, int numKeys);
 
 public:
     RequestMessage* req_msg_arr;
@@ -159,28 +159,28 @@ public:
     ~HostAllocatedSubmissionQueue();
 
     __device__
-    void copyMetaDataDelete(ThreadBlockResources* d_tbResources, CommandType cmd, uint &request_id, void** keys, int keySize, int numKeys, int &tid);
+    void copyMetaDataDelete(ThreadBlockResources* d_tbResources, CommandType cmd, const uint request_id, void** keys, int keySize, int numKeys, const int tid);
 
     __device__
-    void copyMetaDataPutAndGet(ThreadBlockResources* d_tbResources, CommandType cmd, uint &request_id, void** keys, int keySize, int buffSize, int numKeys, int &tid);
+    void copyMetaDataPutAndGet(ThreadBlockResources* d_tbResources, CommandType cmd, const uint request_id, void** keys, int keySize, int buffSize, int numKeys, const int tid);
 
     __device__
-    void copyMetaDataAsyncGet(ThreadBlockResources* d_tbResources, CommandType cmd, uint &request_id, void** keys, int keySize, void** buffs, int buffSize, KVStatusType KVStatus[], int numKeys, int &tid);
+    void copyMetaDataAsyncGet(ThreadBlockResources* d_tbResources, CommandType cmd, const uint request_id, void** keys, int keySize, void** buffs, int buffSize, KVStatusType KVStatus[], int numKeys, const int tid);
 
     __device__ 
-    bool push_put(ThreadBlockResources* d_tbResources, int &tid, DataBank* d_databank_p, CommandType cmd, uint &request_id, void** keys, int keySize, int buffSize, void** buffs, int numKeys);
+    bool push_put(ThreadBlockResources* d_tbResources, const int tid, DataBank* d_databank_p, CommandType cmd, const uint request_id, void** keys, int keySize, int buffSize, void** buffs, int numKeys);
     
     __device__ 
-    bool push_get(ThreadBlockResources* d_tbResources, int &tid, CommandType cmd, uint &request_id, void** keys, int keySize, int buffSize, int numKeys);
+    bool push_get(ThreadBlockResources* d_tbResources, const int tid, CommandType cmd, const uint request_id, void** keys, int keySize, int buffSize, int numKeys);
 
     __device__
-    bool push_async_get_initiate(ThreadBlockResources* d_tbResources, int &tid, CommandType cmd, uint &request_id, void** keys, int keySize, void** buffs, int buffSize, KVStatusType KVStatus[], int numKeys);
+    bool push_async_get_initiate(ThreadBlockResources* d_tbResources, const int tid, CommandType cmd, const uint request_id, void** keys, int keySize, void** buffs, int buffSize, KVStatusType KVStatus[], int numKeys);
 
     __device__ 
-    bool push_delete(ThreadBlockResources* d_tbResources, int &tid, CommandType cmd, uint &request_id, void** keys, int keySize, int numKeys = 1);
+    bool push_delete(ThreadBlockResources* d_tbResources, const int tid, CommandType cmd, const uint request_id, void** keys, int keySize, int numKeys = 1);
 
     __device__ 
-    bool push_no_data(ThreadBlockResources* d_tbResources, int &tid, CommandType cmd, uint &request_id, int ticket = 0, int numKeys = 1);
+    bool push_no_data(ThreadBlockResources* d_tbResources, const int tid, CommandType cmd, const uint request_id, int ticket = 0, int numKeys = 1);
 
     __host__ 
     bool pop(int &currModHead);
@@ -196,13 +196,13 @@ private:
     gdr_mh_t mh;
 
     __device__
-    void copyResponseMessage(ThreadBlockResources* d_tbResources, int &tid, int num_keys, KVStatusType KVStatus[]);
+    void copyResponseMessage(ThreadBlockResources* d_tbResources, const int tid, int num_keys, KVStatusType KVStatus[]);
 
     __device__
-    bool getHeadAndCheckEmpty(ThreadBlockResources* d_tbResources, int &tid);
+    bool getHeadAndCheckEmpty(ThreadBlockResources* d_tbResources, const int tid);
     
     __device__
-    void incrementHead(ThreadBlockResources* d_tbResources, int &incrementSize);
+    void incrementHead(ThreadBlockResources* d_tbResources, int incrementSize);
 
     inline void setResMsgArrPtrs(size_t maxNumKeys);
 
@@ -218,16 +218,16 @@ public:
     bool push(KeyValueStore *kvStore, KVMemHandle &kvMemHandle, int blockIndex, int currModHead, RequestMessage &req_msg);
 
     __device__ 
-    bool pop_get(ThreadBlockResources* d_tbResources, void* buffs[], int buffSize, int &tid, DataBank* d_databank_p, CommandType cmd, KVStatusType KVStatus[], int numKeys);
+    bool pop_get(ThreadBlockResources* d_tbResources, void* buffs[], int buffSize, const int tid, DataBank* d_databank_p, CommandType cmd, KVStatusType KVStatus[], int numKeys);
 
     __device__ 
-    bool pop_default(ThreadBlockResources* d_tbResources, int &tid, KVStatusType KVStatus[], int numKeys = 1);
+    bool pop_default(ThreadBlockResources* d_tbResources, const int tid, KVStatusType KVStatus[], int numKeys = 1);
 
     __device__ 
-    bool pop_no_res_msg(ThreadBlockResources* d_tbResources, int &tid, int numKeys = 1);
+    bool pop_no_res_msg(ThreadBlockResources* d_tbResources, const int tid, int numKeys = 1);
 
     __device__ 
-    bool pop_async_get_init(ThreadBlockResources* d_tbResources, int &tid, unsigned int *p_ticket, int numKeys = 1);};
+    bool pop_async_get_init(ThreadBlockResources* d_tbResources, const int tid, unsigned int *p_ticket, int numKeys = 1);};
 
 struct DeviceCompletionQueueWithDataBank {
     DeviceAllocatedCompletionQueue cq;

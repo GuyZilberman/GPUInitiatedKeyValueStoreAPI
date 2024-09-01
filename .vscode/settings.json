@@ -1,5 +1,8 @@
 {
     "files.associations": {
-        "future": "cpp"
+        "future": "cpp",
+        "iostream": "cpp",
+        "__verbose_abort": "cpp",
+        "chrono": "cpp"
     }
 }

@@ -29,50 +29,51 @@ def check_for_wrong(log, context):
         return True
     return False
 
-def print_separator():
-    """Print a separator for better readability."""
-    print("=" * 60)
+def run_all_tests(mode):
+    print("=============================================================")
+    # Run the program with async option
+    success, log = run_command("./kvapp --tb 1 --rk async")
+    if not success or check_for_wrong(log, mode + " "  + "async"):
+        exit(1)
+    
+    print("=============================================================")
+    # Run the program with sync option
+    success, log = run_command("./kvapp --tb 1 --rk sync")
+    if not success or check_for_wrong(log, mode + " "  + "sync"):
+        exit(1)
+    
+    print("=============================================================")
+    # Run the program with async option and host writes
+    success, log = run_command("./kvapp --w host --tb 1 --rk async")
+    if not success or check_for_wrong(log, mode + " "  + "host writes + async"):
+        exit(1)
+    
+    print("=============================================================")
+    # Run the program with sync option and host writes
+    success, log = run_command("./kvapp --w host --tb 1 --rk sync")
+    if not success or check_for_wrong(log, mode + " "  + "host writes + sync"):
+        exit(1)
 
 def main():
+    print("=============================================================")
     # Compile with first set of flags
-    print_separator()
-    success, log = run_command("make -j CHECK_WRONG_ANSWERS=1")
+    success, _ = run_command("make -j CHECK_WRONG_ANSWERS=1")
     if not success:
-        print("Error occurred during first make command")
-        return
+        print("Error occurred during first make command (XDP mode)")
+        exit(1)
     
-    # Run the program with async option
-    print_separator()
-    success, log = run_command("./kvapp --tb 1 --rk async")
-    if not success or check_for_wrong(log, "XDP async"):
-        return
-    
-    # Run the program with sync option
-    print_separator()
-    success, log = run_command("./kvapp --tb 1 --rk sync")
-    if not success or check_for_wrong(log, "XDP sync"):
-        return
-    
+    run_all_tests("XDP")
+        
+    print("=============================================================")
     # Compile with second set of flags
-    print_separator()
-    success, log = run_command("make -j CHECK_WRONG_ANSWERS=1 IN_MEMORY_STORE=1")
+    success, _ = run_command("make -j CHECK_WRONG_ANSWERS=1 IN_MEMORY_STORE=1")
     if not success:
-        print("Error occurred during second make command")
-        return
+        print("Error occurred during second make command (IN_MEMORY_STORE mode)")
+        exit(1)
     
-    # Run the program with async option again
-    print_separator()
-    success, log = run_command("./kvapp --tb 1 --rk async")
-    if not success or check_for_wrong(log, "in-memory async"):
-        return
-    
-    # Run the program with sync option again
-    print_separator()
-    success, log = run_command("./kvapp --tb 1 --rk sync")
-    if not success or check_for_wrong(log, "in-memory sync"):
-        return
+    run_all_tests("IN_MEMORY_STORE")
 
-    print_separator()
+    print("=============================================================")
     print("All commands executed successfully without any wrong answers in the logs.")
 
 if __name__ == "__main__":
