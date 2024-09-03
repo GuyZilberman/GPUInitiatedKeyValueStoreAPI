@@ -154,6 +154,11 @@ private:
 public:
     RequestMessage* req_msg_arr;
     int queueSize;
+    std::atomic<bool> queueStatus;
+    std::mutex queueMutex;
+    std::condition_variable queueCondVar;
+    int currHead;
+
     HostAllocatedSubmissionQueue(gdr_mh_t &mh, int queueSize, int maxKeySize);
 
     ~HostAllocatedSubmissionQueue();
@@ -183,7 +188,10 @@ public:
     bool push_no_data(ThreadBlockResources* d_tbResources, const int tid, CommandType cmd, const uint request_id, int ticket = 0, int numKeys = 1);
 
     __host__ 
-    bool pop(int &currModHead);
+    bool checkQueueStatus(int &currHead);
+
+    __host__ 
+    int pop(int &currHead);
 };
 
 
@@ -248,6 +256,8 @@ class KeyValueStore {
         KVMemHandle *pKVMemHandle;
         int queueSize;
         tbb::concurrent_hash_map<int, std::shared_future<void>>* ticketToFutureMapArr;
+        bool isExit = false;
+
         friend class DeviceAllocatedCompletionQueue;
         __device__ 
         void KVPutBaseD(void* keys[], unsigned int keySize, void* buffs[], unsigned int buffSize, KVStatusType KVStatus[], CommandType cmd, int numKeys = 1);
@@ -263,6 +273,8 @@ class KeyValueStore {
 
         bool checkParameters(int queueSize, int maxValueSize, int maxNumKeys, int maxKeySize);
 
+        void checkIfQueuesAreFull(int numThreadBlocks);
+        
     public:
         HostSubmissionQueueWithDataBank* h_hostmem_p;
         DeviceCompletionQueueWithDataBank* h_devmem_p;
