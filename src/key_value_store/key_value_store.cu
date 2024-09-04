@@ -294,6 +294,14 @@ bool HostAllocatedSubmissionQueue::push_no_data(ThreadBlockResources* d_tbResour
 }
 
 __host__ 
+int HostAllocatedSubmissionQueue::pop(int& currHead) {
+    int currModHead = currHead % this->queueSize;
+    int incrementSize = req_msg_arr[currModHead].numKeys;
+    head.store(currHead + incrementSize, cuda::memory_order_release);
+    return currModHead;
+}
+
+__host__ 
 bool HostAllocatedSubmissionQueue::checkQueueStatus(int &currHead) {
     currHead = head.load(cuda::memory_order_relaxed);
     if (currHead == tail.load(cuda::memory_order_acquire)) {
@@ -302,12 +310,17 @@ bool HostAllocatedSubmissionQueue::checkQueueStatus(int &currHead) {
     return true;
 }
 
-__host__ 
-int HostAllocatedSubmissionQueue::pop(int& currHead) {
-    int currModHead = currHead % this->queueSize;
-    int incrementSize = req_msg_arr[currModHead].numKeys;
-    head.store(currHead + incrementSize, cuda::memory_order_release);
-    return currModHead;
+__host__
+void HostAllocatedSubmissionQueue::notifyQueueFull() {
+    this->queueStatus.store(true, std::memory_order_release);
+    this->queueCondVar.notify_one(); 
+}
+
+__host__
+void HostAllocatedSubmissionQueue::waitUntilFull(std::unique_lock<std::mutex>& lock) {
+    this->queueCondVar.wait(lock, [this] { 
+        return this->queueStatus.load(std::memory_order_acquire); 
+    });
 }
 
 // DeviceAllocatedCompletionQueue    
@@ -548,9 +561,7 @@ void KeyValueStore::server_func(KVMemHandle &kvMemHandle, int blockIndex) {
 
         // wait until the queue is full
         std::unique_lock<std::mutex> lock(submission_queue->queueMutex);
-        submission_queue->queueCondVar.wait(lock, [this, submission_queue] { 
-            return submission_queue->queueStatus.load(std::memory_order_acquire); 
-        });
+        submission_queue->waitUntilFull(lock);
 
         int currModHead = submission_queue->pop(submission_queue->currHead);
         // Set the first new request message
@@ -745,8 +756,7 @@ void KeyValueStore::checkIfQueuesAreFull(int numThreadBlocks) {
             if(!submission_queue->queueStatus.load(std::memory_order_acquire) && lock.try_lock()) {
                 if(submission_queue->checkQueueStatus(submission_queue->currHead)) {
                     // Notify the thread that the queue is full
-                    submission_queue->queueStatus.store(true, std::memory_order_release);
-                    submission_queue->queueCondVar.notify_one(); 
+                    submission_queue->notifyQueueFull();
                 }
             }
         }

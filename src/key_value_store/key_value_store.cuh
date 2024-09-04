@@ -186,12 +186,18 @@ public:
 
     __device__ 
     bool push_no_data(ThreadBlockResources* d_tbResources, const int tid, CommandType cmd, const uint request_id, int ticket = 0, int numKeys = 1);
+    
+    __host__ 
+    int pop(int &currHead);
 
     __host__ 
     bool checkQueueStatus(int &currHead);
 
-    __host__ 
-    int pop(int &currHead);
+    __host__
+    void notifyQueueFull();
+
+    __host__
+    void waitUntilFull(std::unique_lock<std::mutex>& lock);
 };
 
 
