@@ -194,10 +194,10 @@ public:
     bool checkQueueStatus(int &currHead);
 
     __host__
-    void notifyQueueFull();
+    void notifyQueueNotEmpty();
 
     __host__
-    void waitUntilFull(std::unique_lock<std::mutex>& lock);
+    void waitUntilQueueNotEmpty(std::unique_lock<std::mutex>& lock);
 };
 
 
@@ -279,7 +279,7 @@ class KeyValueStore {
 
         bool checkParameters(int queueSize, int maxValueSize, int maxNumKeys, int maxKeySize);
 
-        void checkIfQueuesAreFull(int numThreadBlocks);
+        void checkIfQueuesAreNotEmpty(int numThreadBlocks);
         
     public:
         HostSubmissionQueueWithDataBank* h_hostmem_p;

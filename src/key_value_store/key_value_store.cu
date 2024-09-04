@@ -311,13 +311,13 @@ bool HostAllocatedSubmissionQueue::checkQueueStatus(int &currHead) {
 }
 
 __host__
-void HostAllocatedSubmissionQueue::notifyQueueFull() {
+void HostAllocatedSubmissionQueue::notifyQueueNotEmpty() {
     this->queueStatus.store(true, std::memory_order_release);
     this->queueCondVar.notify_one(); 
 }
 
 __host__
-void HostAllocatedSubmissionQueue::waitUntilFull(std::unique_lock<std::mutex>& lock) {
+void HostAllocatedSubmissionQueue::waitUntilQueueNotEmpty(std::unique_lock<std::mutex>& lock) {
     this->queueCondVar.wait(lock, [this] { 
         return this->queueStatus.load(std::memory_order_acquire); 
     });
@@ -529,7 +529,6 @@ void KeyValueStore::KVPutBaseD(void* keys[], const unsigned int keySize, void* b
     HostAllocatedSubmissionQueue *submission_queue = &d_hostmem_p[blockIndex].sq;
     DeviceAllocatedCompletionQueue *completion_queue = &d_devmem_p[blockIndex].cq;
     DataBank* d_hostDataBank_p = &d_hostmem_p[blockIndex].dataBank;
-    
     // TODO handle later: check if completion queue is not full as well
     while (!submission_queue->push_put(&tbResources, tid, d_hostDataBank_p, cmd, tbResources.request_id, keys, keySize, buffSize, buffs, numKeys));
     // Immediately wait for a response
@@ -559,9 +558,9 @@ void KeyValueStore::server_func(KVMemHandle &kvMemHandle, int blockIndex) {
     
     while (command != CommandType::EXIT) {
 
-        // wait until the queue is full
+        // wait until the queue is not empty
         std::unique_lock<std::mutex> lock(submission_queue->queueMutex);
-        submission_queue->waitUntilFull(lock);
+        submission_queue->waitUntilQueueNotEmpty(lock);
 
         int currModHead = submission_queue->pop(submission_queue->currHead);
         // Set the first new request message
@@ -747,7 +746,7 @@ bool KeyValueStore::checkParameters(int queueSize, int maxValueSize, int maxNumK
     return true;
 }
 
-void KeyValueStore::checkIfQueuesAreFull(int numThreadBlocks) {
+void KeyValueStore::checkIfQueuesAreNotEmpty(int numThreadBlocks) {
     HostAllocatedSubmissionQueue *submission_queue;
     while(!this->isExit) {
         for (size_t blockIndex = 0; blockIndex < numThreadBlocks; ++blockIndex) {
@@ -755,8 +754,8 @@ void KeyValueStore::checkIfQueuesAreFull(int numThreadBlocks) {
             std::unique_lock<std::mutex> lock(submission_queue->queueMutex, std::defer_lock);
             if(!submission_queue->queueStatus.load(std::memory_order_acquire) && lock.try_lock()) {
                 if(submission_queue->checkQueueStatus(submission_queue->currHead)) {
-                    // Notify the thread that the queue is full
-                    submission_queue->notifyQueueFull();
+                    // Notify the thread that the queue is not empty
+                    submission_queue->notifyQueueNotEmpty();
                 }
             }
         }
@@ -806,7 +805,6 @@ KeyValueStore::KeyValueStore(const int numThreadBlocks, const int blockSize, int
         // Launch a thread with a different index
         std::thread(&KeyValueStore::server_func, this, std::ref(kvMemHandle), blockIndex).detach();
     }
-    
     // for (int blockIndex = 0; blockIndex < numThreadBlocks; ++blockIndex) {
     //     threads.emplace_back([&, blockIndex]() {
     //         // Create a cpu_set_t object representing a set of CPUs. Clear it and set the CPU you want the thread to run on.
@@ -827,8 +825,8 @@ KeyValueStore::KeyValueStore(const int numThreadBlocks, const int blockSize, int
         thread.detach();
     }
 
-    // Launch a thread that checks if there is a full queue, and wakes up the appropriate thread
-    std::thread(&KeyValueStore::checkIfQueuesAreFull, this, numThreadBlocks).detach();
+    // Launch a thread that checks if there is a non-empty queue, and wakes up the appropriate thread
+    std::thread(&KeyValueStore::checkIfQueuesAreNotEmpty, this, numThreadBlocks).detach();
 }
 
 KeyValueStore::~KeyValueStore() {
