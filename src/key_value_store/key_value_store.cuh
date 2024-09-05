@@ -154,7 +154,7 @@ private:
 public:
     RequestMessage* req_msg_arr;
     int queueSize;
-    std::atomic<bool> isQueueNotEmpty;
+    std::atomic<bool> isServerThreadActive;
     std::mutex queueMutex;
     std::condition_variable queueCondVar;
     int currHead;
@@ -194,10 +194,10 @@ public:
     bool checkQueueNotEmpty(int &currHead);
 
     __host__
-    void notifyQueueNotEmpty();
+    void controllerSignalServerThread();
 
     __host__
-    void waitUntilQueueNotEmpty(std::unique_lock<std::mutex>& lock);
+    void serverThreadWaitUntilSignal(std::unique_lock<std::mutex>& lock);
 };
 
 
@@ -279,7 +279,7 @@ class KeyValueStore {
 
         bool checkParameters(int queueSize, int maxValueSize, int maxNumKeys, int maxKeySize);
 
-        void checkIfQueuesAreNotEmpty(int numThreadBlocks);
+        void controller_func(int numThreadBlocks);
         
     public:
         HostSubmissionQueueWithDataBank* h_hostmem_p;

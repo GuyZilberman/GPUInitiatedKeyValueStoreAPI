@@ -165,7 +165,7 @@ inline void HostAllocatedSubmissionQueue::setRequestMessage(int idx, CommandType
 HostAllocatedSubmissionQueue::HostAllocatedSubmissionQueue(gdr_mh_t &mh, int queueSize, int maxKeySize) :
     mh(mh),
     queueSize(queueSize) {
-    this->isQueueNotEmpty.store(false, std::memory_order_relaxed);
+    this->isServerThreadActive.store(false, std::memory_order_relaxed);
 
     CUDA_ERRCHECK(cudaHostAlloc((void**)&req_msg_arr, queueSize * sizeof(RequestMessage), cudaHostAllocMapped));
     for(int i = 0; i < queueSize; i++){
@@ -310,15 +310,15 @@ bool HostAllocatedSubmissionQueue::checkQueueNotEmpty(int &currHead) {
 }
 
 __host__
-void HostAllocatedSubmissionQueue::notifyQueueNotEmpty() {
-    this->isQueueNotEmpty.store(true, std::memory_order_release);
+void HostAllocatedSubmissionQueue::controllerSignalServerThread() {
+    this->isServerThreadActive.store(true, std::memory_order_release);
     this->queueCondVar.notify_one(); 
 }
 
 __host__
-void HostAllocatedSubmissionQueue::waitUntilQueueNotEmpty(std::unique_lock<std::mutex>& lock) {
+void HostAllocatedSubmissionQueue::serverThreadWaitUntilSignal(std::unique_lock<std::mutex>& lock) {
     this->queueCondVar.wait(lock, [this] { 
-        return this->isQueueNotEmpty.load(std::memory_order_acquire); 
+        return this->isServerThreadActive.load(std::memory_order_acquire); 
     });
 }
 
@@ -560,7 +560,7 @@ void KeyValueStore::server_func(KVMemHandle &kvMemHandle, int blockIndex) {
 
         // wait until the queue is not empty
         std::unique_lock<std::mutex> lock(submission_queue->queueMutex);
-        submission_queue->waitUntilQueueNotEmpty(lock);
+        submission_queue->serverThreadWaitUntilSignal(lock);
 
         int currModHead;
         submission_queue->pop(submission_queue->currHead, currModHead);
@@ -569,7 +569,7 @@ void KeyValueStore::server_func(KVMemHandle &kvMemHandle, int blockIndex) {
         // Parse the request message
         command = submission_queue->req_msg_arr[currModHead].cmd;
         while (!completion_queue->push(this, kvMemHandle, blockIndex, currModHead, req_msg)); // Busy-wait until the value is pushed successfully
-        submission_queue->isQueueNotEmpty.store(false, std::memory_order_release);
+        submission_queue->isServerThreadActive.store(false, std::memory_order_release);
     }
 }
 
@@ -747,16 +747,16 @@ bool KeyValueStore::checkParameters(int queueSize, int maxValueSize, int maxNumK
     return true;
 }
 
-void KeyValueStore::checkIfQueuesAreNotEmpty(int numThreadBlocks) {
+void KeyValueStore::controller_func(int numThreadBlocks) {
     HostAllocatedSubmissionQueue *submission_queue;
     while(!this->isExit) {
         for (size_t blockIndex = 0; blockIndex < numThreadBlocks; ++blockIndex) {
             submission_queue = &h_hostmem_p[blockIndex].sq;
             std::unique_lock<std::mutex> lock(submission_queue->queueMutex, std::defer_lock);
-            if(!submission_queue->isQueueNotEmpty.load(std::memory_order_acquire) && lock.try_lock()) {
+            if(!submission_queue->isServerThreadActive.load(std::memory_order_acquire) && lock.try_lock()) {
                 if(submission_queue->checkQueueNotEmpty(submission_queue->currHead)) {
                     // Notify the thread that the queue is not empty
-                    submission_queue->notifyQueueNotEmpty();
+                    submission_queue->controllerSignalServerThread();
                 }
             }
         }
@@ -828,7 +828,7 @@ KeyValueStore::KeyValueStore(const int numThreadBlocks, const int blockSize, int
     }
 
     // Launch a thread that checks if there is a non-empty queue, and wakes up the appropriate thread
-    std::thread(&KeyValueStore::checkIfQueuesAreNotEmpty, this, numThreadBlocks).detach();
+    std::thread(&KeyValueStore::controller_func, this, numThreadBlocks).detach();
 }
 
 KeyValueStore::~KeyValueStore() {
