@@ -1,8 +1,8 @@
-# KeyValueStore API: High-Performance Key-Value Store for GPU-Accelerated Systems
+# GPU Initiated KeyValueStore API: High-Performance Key-Value Store for GPU-Accelerated Systems
 
 ## Introduction:
 
-The KeyValueStore API is a high-performance key-value store designed for GPU-accelerated systems. It provides efficient storage operations by leveraging CUDA and GPU-based parallelism, making it ideal for large-scale data processing and compute-intensive applications. This repository contains the full implementation of the KeyValueStore, offering a flexible interface for managing key-value pairs in both CPU and GPU memory. The API supports both in-memory and database-backed stores, enabling seamless integration into a variety of real-time data processing workflows.
+The GPU Initiated KeyValueStore API is a high-performance key-value store designed for GPU-accelerated systems. It provides efficient storage operations by leveraging CUDA and GPU-based parallelism, making it ideal for large-scale data processing and compute-intensive applications. This repository contains the full implementation of the KeyValueStore, offering a flexible interface for managing key-value pairs in both CPU and GPU memory. The API supports both in-memory and database-backed stores, enabling seamless integration into a variety of real-time data processing workflows.
 
 ## Dependencies
 
