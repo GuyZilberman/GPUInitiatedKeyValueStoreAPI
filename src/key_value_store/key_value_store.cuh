@@ -154,7 +154,7 @@ private:
 public:
     RequestMessage* req_msg_arr;
     int queueSize;
-    std::atomic<bool> queueStatus;
+    std::atomic<bool> isQueueNotEmpty;
     std::mutex queueMutex;
     std::condition_variable queueCondVar;
     int currHead;
@@ -188,10 +188,10 @@ public:
     bool push_no_data(ThreadBlockResources* d_tbResources, const int tid, CommandType cmd, const uint request_id, int ticket = 0, int numKeys = 1);
     
     __host__ 
-    int pop(int &currHead);
+    void pop(const int currHead, int &currModHead);
 
     __host__ 
-    bool checkQueueStatus(int &currHead);
+    bool checkQueueNotEmpty(int &currHead);
 
     __host__
     void notifyQueueNotEmpty();
