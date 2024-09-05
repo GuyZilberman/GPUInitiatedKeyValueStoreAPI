@@ -16,6 +16,29 @@ Before getting started, make sure you have the following dependencies installed:
 - `gdrcopy`: You can find detailed installation instructions on the [gdrcopy GitHub repository](https://github.com/NVIDIA/gdrcopy).
 
 
+## Configuration
+
+To configure the KeyValueStore API, you can modify `cfg/config.yaml`. This file contains various settings that control the behavior of the API. Here are some key configurations you can modify:
+
+### Compile-Time Settings (`COMPILE_TIME`)
+These settings are used during the build process of the API.
+
+- **`KV_STORE.IN_MEMORY_STORE`**:
+    - `MAX_VALUE_SIZE`: Defines the maximum size for a value stored in the in-memory key-value store. 
+      - Example: `4096` (bytes)
+    - `MAX_KEY_SIZE`: Defines the maximum size for a key stored in the in-memory key-value store.
+      - Example: `4` (bytes)
+
+### Runtime Settings (`RUNTIME`)
+These settings are used during the runtime of the API and can be modified without recompiling the code.
+
+- **`KV_STORE.QUEUE_SIZE`**:
+    - Defines the size of the queue used for managing incoming requests.
+    - Example: `550`
+
+- **`KV_STORE.XDP.DB_IDENTIFY`**:
+    - Placeholder for XDP's database identifier. 
+
 
 ## Build
 
