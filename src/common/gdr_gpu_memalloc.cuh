@@ -147,6 +147,7 @@ class GPUMultiBufferHandle : public GPUBufferHandle {
     size_t singleBufferSizeInBytes;
     public:
 
+        __device__ __host__
         GPUBufferHandle& getSharedGPUUserDataBuffers(){
             return sharedGPUUserDataBuffers;
         }

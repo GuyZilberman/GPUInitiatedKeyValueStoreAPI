@@ -135,7 +135,7 @@ void async_read_kernel_3phase(KeyValueStore *kvStore, UserResources* d_userResou
 #ifdef CHECK_WRONG_ANSWERS
     int wrong_answers = 0;
 #endif
-    unsigned int ticket_arr[CONCURRENT_COUNT]; // TODO guy keep it local memory?
+    unsigned int ticket_arr[CONCURRENT_COUNT];
 
     while (userResources.idx < CONCURRENT_COUNT){
         BEGIN_THREAD_ZERO {
@@ -195,7 +195,7 @@ void async_read_kernel(KeyValueStore *kvStore, UserResources* d_userResources, c
 #ifdef CHECK_WRONG_ANSWERS
     int wrong_answers = 0;
 #endif
-    unsigned int ticket_arr[CONCURRENT_COUNT]; // TODO guy keep it local memory?
+    unsigned int ticket_arr[CONCURRENT_COUNT];
 
     while (userResources.idx < CONCURRENT_COUNT){
         BEGIN_THREAD_ZERO {

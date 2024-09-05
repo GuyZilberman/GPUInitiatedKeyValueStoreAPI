@@ -7,7 +7,6 @@ log*
 *.o
 *.d
 compile_commands.json
-README.md
 
 # test artifacts
 results*

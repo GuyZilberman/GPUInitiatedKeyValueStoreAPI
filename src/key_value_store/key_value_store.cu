@@ -139,7 +139,7 @@ ThreadBlockResources::~ThreadBlockResources(){
 __device__
 bool HostAllocatedSubmissionQueue::getTailAndCheckFull(ThreadBlockResources* d_tbResources, const int tid, int incrementSize){
     BEGIN_THREAD_ZERO {
-        d_tbResources->currTail = tail.load(cuda::memory_order_relaxed); // TODO guy CS AFTER         
+        d_tbResources->currTail = tail.load(cuda::memory_order_relaxed);     
         d_tbResources->isQueueFull = d_tbResources->currTail - head.load(cuda::memory_order_acquire) + incrementSize - 1 >= this->queueSize;
         d_tbResources->currModTail = d_tbResources->currTail % this->queueSize;
     } END_THREAD_ZERO
@@ -318,7 +318,7 @@ void DeviceAllocatedCompletionQueue::copyResponseMessage(ThreadBlockResources* d
 __device__
 bool DeviceAllocatedCompletionQueue::getHeadAndCheckEmpty(ThreadBlockResources* d_tbResources, const int tid){
     BEGIN_THREAD_ZERO {
-        d_tbResources->currHead = head.load(cuda::memory_order_relaxed); //TODO guy CS AFTER?
+        d_tbResources->currHead = head.load(cuda::memory_order_relaxed);
         d_tbResources->isQueueEmpty = d_tbResources->currHead == tail.load(cuda::memory_order_acquire);
         d_tbResources->currModHead = d_tbResources->currHead % this->queueSize;
     } END_THREAD_ZERO
@@ -575,7 +575,7 @@ void KeyValueStore::process_async_get(KVMemHandle &kvMemHandle, int blockIndex, 
     delete p_req_msg_cpy;
 }
 
-void printMapContents(const tbb::concurrent_hash_map<int, std::shared_future<void>>& ticketToFutureMap) { // TODO guy DELETE
+void printMapContents(const tbb::concurrent_hash_map<int, std::shared_future<void>>& ticketToFutureMap) {
     for (tbb::concurrent_hash_map<int, std::shared_future<void>>::const_iterator it = ticketToFutureMap.begin(); it != ticketToFutureMap.end(); ++it) {
         int key = it->first;
         // Since std::shared_future<void> does not have a direct way to print its value,
@@ -925,7 +925,7 @@ void KeyValueStore::KVAsyncGetInitiateD(void* keys[], const unsigned int keySize
     DeviceAllocatedCompletionQueue *completion_queue = &d_devmem_p[blockIndex].cq;
     
     void** buffs = (void**)valMultiBuff.getHostPtr();
-    KVStatusType* KVStatus = (KVStatusType*)kvStatusMultiBuff.getHostPtr();
+    KVStatusType* KVStatus = (KVStatusType*)kvStatusMultiBuff.getSharedGPUUserDataBuffers().getHostPtr();
     while (!submission_queue->push_async_get_initiate(&tbResources, tid, CommandType::ASYNC_GET_INITIATE, tbResources.request_id, keys, keySize, buffs, buffSize, KVStatus, numKeys));
     // Immediately wait for a response
     while (!completion_queue->pop_async_get_init(&tbResources, tid, p_ticket, numKeys));

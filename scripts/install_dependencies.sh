@@ -1,5 +1,9 @@
 #!/bin/bash
 
+# Install dependencies
+sudo snap install yq
+sudo apt-get install bear libtbb-dev
+
 # Get the directory of the current script
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 

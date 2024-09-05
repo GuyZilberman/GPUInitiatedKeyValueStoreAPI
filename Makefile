@@ -16,7 +16,6 @@ libkey_value_store.a: $(KV_LIB_OBJS)
 kvstore: libkey_value_store.a
 	rm -f $(KV_LIB_OBJS)
 
-#TODO guy add $KV_APP_LIBS
 kvapp: $(BENCHMARK_OBJS) libkey_value_store.a
 	$(CC) $(CFLAGS) $(BENCHMARK_OBJS) -o $@ $(LFLAGS) -lyaml-cpp $(KV_APP_LIBS)
 	rm -f $(BENCHMARK_OBJS)
