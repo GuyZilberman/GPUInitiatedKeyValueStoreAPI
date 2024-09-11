@@ -69,7 +69,8 @@ enum class CommandType {
     MULTI_PUT,
     MULTI_GET,
     ASYNC_GET_INITIATE,
-    ASYNC_GET_FINALIZE
+    ASYNC_GET_FINALIZE,
+    ASYNC_PUT
 };
 
 enum class KVStatusType {
@@ -138,7 +139,6 @@ struct ThreadBlockResources {
 
 class HostAllocatedSubmissionQueue {
 private:
-    cuda::atomic<int> head;
     cuda::atomic<int> tail;
     gdr_mh_t mh;
 
@@ -152,6 +152,7 @@ private:
     inline void setRequestMessage(int idx, CommandType cmd, uint request_id, void* key, int keySize, int numKeys);
 
 public:
+    cuda::atomic<int> head;
     RequestMessage* req_msg_arr;
     int queueSize;
     std::atomic<bool> isServerThreadActive;
@@ -229,7 +230,7 @@ public:
     ~DeviceAllocatedCompletionQueue();
 
     __host__
-    bool push(KeyValueStore *kvStore, KVMemHandle &kvMemHandle, int blockIndex, int currModHead, RequestMessage &req_msg);
+    bool push(KeyValueStore *kvStore, KVMemHandle &kvMemHandle, int blockIndex, int currModHead, RequestMessage &req_msg, ResponseMessage &res_msg);
 
     __device__ 
     bool pop_get(ThreadBlockResources* d_tbResources, void* buffs[], int buffSize, const int tid, DataBank* d_databank_p, CommandType cmd, KVStatusType KVStatus[], int numKeys);
@@ -255,7 +256,17 @@ struct HostSubmissionQueueWithDataBank {
     DataBank dataBank;
 
     HostSubmissionQueueWithDataBank(gdr_mh_t &mh, int queueSize, int maxValueSize, int maxKeySize);
+
+    void pop(const int currHead, KVMemHandle &kvMemHandle, int &currModHead, ResponseMessage &res_msg);
 };
+
+#ifdef IN_MEMORY_STORE
+void putInMemoryStore(RequestMessage &req_msg, void* data, tbb::concurrent_hash_map<std::array<unsigned char, MAX_KEY_SIZE>, std::array<unsigned char, MAX_VALUE_SIZE>, KeyHasher> &inMemoryStoreMap, KVStatusType &res_ans);
+void getFromMemoryStore(RequestMessage &req_msg, void* data, tbb::concurrent_hash_map<std::array<unsigned char, MAX_KEY_SIZE>, std::array<unsigned char, MAX_VALUE_SIZE>, KeyHasher> &inMemoryStoreMap, KVStatusType &res_ans, void* key);
+#else
+void putInPliopsDB(PLIOPS_DB_t &plio_handle, RequestMessage &req_msg, void *data, KVStatusType &KVStatus, int &StorelibStatus);
+void getFromPliopsDB(PLIOPS_DB_t &plio_handle, RequestMessage &req_msg, void *data, KVStatusType &KVStatus, int &StorelibStatus, void* key);
+#endif
 
 class KeyValueStore {
     private:
@@ -271,11 +282,11 @@ class KeyValueStore {
         __device__ 
         void KVGetBaseD(void* keys[], const unsigned int keySize, void* buffs[], const unsigned int buffSize, KVStatusType KVStatus[], CommandType cmd, int numKeys = 1);
 
-        void server_func(KVMemHandle &kvMemHandle, int blockIndex);
+        void server_func(KVMemHandle &kvMemHandle, int blockIndex, int maxNumKeys);
 
         void process_async_get(KVMemHandle &kvMemHandle, int blockIndex, ResponseMessage &res_msg, int currModTail, size_t num_keys, void* keys_buffer, RequestMessage* p_req_msg_cpy);
 
-        void process_kv_request(KVMemHandle &kvMemHandle, int blockIndex, ResponseMessage *res_msg_arr, int currTail, RequestMessage &req_msg);
+        void process_kv_request(KVMemHandle &kvMemHandle, int blockIndex, ResponseMessage *res_msg_arr, int currTail, RequestMessage &req_msg, ResponseMessage &res_msg);
 
         bool checkParameters(int queueSize, int maxValueSize, int maxNumKeys, int maxKeySize);
 
@@ -314,6 +325,12 @@ class KeyValueStore {
         __device__ 
         void KVDeleteD(void* key, unsigned int keySize, KVStatusType KVStatus[]);
         
+        __device__ 
+        void KVAsyncPutInitiateD(void* keys[], unsigned int keySize, void* buffs[], unsigned int buffSize, int numKeys);
+
+        __device__
+        void KVAsyncPutFinalizeD(KVStatusType KVStatus[], int numKeys);
+
         __device__
         void KVAsyncGetInitiateD(void* keys[], const unsigned int keySize, GPUMultiBufferHandle& valMultiBuff, const unsigned int buffSize, GPUMultiBufferHandle& kvStatusMultiBuff, int numKeys, unsigned int *p_ticket);
 

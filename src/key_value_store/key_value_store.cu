@@ -379,13 +379,13 @@ DeviceAllocatedCompletionQueue::~DeviceAllocatedCompletionQueue() {
 }
 
 __host__
-bool DeviceAllocatedCompletionQueue::push(KeyValueStore *kvStore, KVMemHandle &kvMemHandle, int blockIndex, int currModHead, RequestMessage &req_msg) {
+bool DeviceAllocatedCompletionQueue::push(KeyValueStore *kvStore, KVMemHandle &kvMemHandle, int blockIndex, int currModHead, RequestMessage &req_msg, ResponseMessage &res_msg) {
     int incrementSize = req_msg.numKeys;
     int currTail = tail.load(cuda::memory_order_relaxed);
     if (currTail - head.load(cuda::memory_order_acquire) + incrementSize - 1 >= this->queueSize) {
         return false; // Queue full
     }
-    kvStore->process_kv_request(kvMemHandle, blockIndex, res_msg_arr, currTail, req_msg);
+    kvStore->process_kv_request(kvMemHandle, blockIndex, res_msg_arr, currTail, req_msg, res_msg);
     tail.store(currTail + incrementSize, cuda::memory_order_release);
     return true;
 }
@@ -455,6 +455,41 @@ DeviceCompletionQueueWithDataBank::DeviceCompletionQueueWithDataBank(gdr_mh_t &m
 HostSubmissionQueueWithDataBank::HostSubmissionQueueWithDataBank(gdr_mh_t &mh, int queueSize, int maxValueSize, int maxKeySize):
         sq(mh, queueSize, maxKeySize),
         dataBank(queueSize, maxValueSize, AllocationType::SHARED_CPU_MEMORY){}
+
+__host__ 
+void HostSubmissionQueueWithDataBank::pop(const int currHead, KVMemHandle &kvMemHandle, int &currModHead, ResponseMessage &res_msg){    
+    currModHead = currHead % sq.queueSize;
+    int incrementSize = sq.req_msg_arr[currModHead].numKeys;
+    CommandType command = sq.req_msg_arr[currModHead].cmd;
+    if (command == CommandType::ASYNC_PUT)
+    {
+        size_t num_keys = sq.req_msg_arr[currModHead].numKeys;
+#ifdef STORELIB_LOOPBACK
+        for (int i = 0; i < num_keys; i++)
+            res_msg.KVStatus[i] = KVStatusType::SUCCESS;
+
+#elif defined(IN_MEMORY_STORE)
+        tbb::concurrent_hash_map<std::array<unsigned char, MAX_KEY_SIZE>, std::array<unsigned char, MAX_VALUE_SIZE>, KeyHasher>& inMemoryStoreMap = kvMemHandle.inMemoryStoreMap;
+        tbb::parallel_for(size_t(0), num_keys, [&](size_t i) {
+            putInMemoryStore(sq.req_msg_arr[(currModHead + i) % sq.queueSize],
+            &dataBank.data[(currModHead + i) % sq.queueSize * dataBank.maxValueSize], 
+            inMemoryStoreMap, 
+            res_msg.KVStatus[i]);
+        });
+#else
+        PLIOPS_DB_t& plio_handle = kvMemHandle.plio_handle;
+        tbb::parallel_for(size_t(0), num_keys, [&](size_t i) {
+            putInPliopsDB(plio_handle, 
+            sq.req_msg_arr[(currModHead + i) % sq.queueSize],
+            &dataBank.data[(currModHead + i) % sq.queueSize * dataBank.maxValueSize], 
+            res_msg.KVStatus[i], 
+            res_msg.StorelibStatus[i]);
+        });
+#endif
+    }
+
+    sq.head.store(currHead + incrementSize, cuda::memory_order_release);
+}
 
 
 void handle_status(KVStatusType &KVStatus, int StorelibStatus, CommandType cmd, uint request_id, void *key){
@@ -550,9 +585,13 @@ void KeyValueStore::KVGetBaseD(void* keys[], const unsigned int keySize, void* b
     while (!completion_queue->pop_get(&tbResources, buffs, buffSize, tid, d_devDataBank_p, cmd, KVStatus, numKeys));
 }
 
-void KeyValueStore::server_func(KVMemHandle &kvMemHandle, int blockIndex) {
+void KeyValueStore::server_func(KVMemHandle &kvMemHandle, int blockIndex, int maxNumKeys) {
     HostAllocatedSubmissionQueue *submission_queue = &h_hostmem_p[blockIndex].sq;
     DeviceAllocatedCompletionQueue *completion_queue = &h_devmem_p[blockIndex].cq;
+    HostSubmissionQueueWithDataBank *submission_queue_with_data_bank = &h_hostmem_p[blockIndex];
+    ResponseMessage res_msg;
+    res_msg.KVStatus = new KVStatusType[maxNumKeys];
+    res_msg.StorelibStatus = new int[maxNumKeys];
 
     CommandType command = CommandType::NONE;
     
@@ -563,14 +602,16 @@ void KeyValueStore::server_func(KVMemHandle &kvMemHandle, int blockIndex) {
         submission_queue->serverThreadWaitUntilSignal(lock);
 
         int currModHead;
-        submission_queue->pop(submission_queue->currHead, currModHead);
+        submission_queue_with_data_bank->pop(submission_queue->currHead, kvMemHandle, currModHead, res_msg);
         // Set the first new request message
         RequestMessage &req_msg = submission_queue->req_msg_arr[currModHead];
         // Parse the request message
         command = submission_queue->req_msg_arr[currModHead].cmd;
-        while (!completion_queue->push(this, kvMemHandle, blockIndex, currModHead, req_msg)); // Busy-wait until the value is pushed successfully
+        while (!completion_queue->push(this, kvMemHandle, blockIndex, currModHead, req_msg, res_msg)); // Busy-wait until the value is pushed successfully
         submission_queue->isServerThreadActive.store(false, std::memory_order_release);
     }
+    delete[] res_msg.KVStatus;
+    delete[] res_msg.StorelibStatus;
 }
 
 void KeyValueStore::process_async_get(KVMemHandle &kvMemHandle, int blockIndex, ResponseMessage &res_msg, int currModTail, size_t num_keys, void* keys_buffer, RequestMessage* p_req_msg_cpy) {
@@ -607,10 +648,10 @@ void printMapContents(const tbb::concurrent_hash_map<int, std::shared_future<voi
     }
 }
 
-void KeyValueStore::process_kv_request(KVMemHandle &kvMemHandle, int blockIndex, ResponseMessage *res_msg_arr, int currTail, RequestMessage &req_msg){
+void KeyValueStore::process_kv_request(KVMemHandle &kvMemHandle, int blockIndex, ResponseMessage *curr_res_msg_arr, int currTail, RequestMessage &req_msg, ResponseMessage &res_msg){
     int currModTail = currTail % queueSize;
-    ResponseMessage res_msg = res_msg_arr[currModTail];
-    #ifndef STORELIB_LOOPBACK
+    ResponseMessage &curr_res_msg = curr_res_msg_arr[currModTail];
+#ifndef STORELIB_LOOPBACK
     DataBank* h_hostDataBank_p = &(this->h_hostmem_p[blockIndex].dataBank);
     DataBank* h_devDataBank_p = &(this->h_devmem_p[blockIndex].dataBank);
     HostAllocatedSubmissionQueue *submission_queue = &this->h_hostmem_p[blockIndex].sq;
@@ -628,39 +669,42 @@ void KeyValueStore::process_kv_request(KVMemHandle &kvMemHandle, int blockIndex,
 #endif
     CommandType command = req_msg.cmd;
     if (command == CommandType::EXIT){
-        res_msg.KVStatus[0] = KVStatusType::EXIT;
+        curr_res_msg.KVStatus[0] = KVStatusType::EXIT;
     }
     else if (command == CommandType::PUT || command == CommandType::MULTI_PUT)
     {
 #ifdef STORELIB_LOOPBACK
         for (int i = 0; i < num_keys; i++)
-            res_msg.KVStatus[i] = KVStatusType::SUCCESS;
+            curr_res_msg.KVStatus[i] = KVStatusType::SUCCESS;
 
 #elif defined(IN_MEMORY_STORE)
         tbb::parallel_for(size_t(0), num_keys, [&](size_t i) {
             putInMemoryStore(submission_queue->req_msg_arr[(currModTail + i) % queueSize],
             &h_hostDataBank_p->data[(currModTail + i) % queueSize * h_hostDataBank_p->maxValueSize], 
             inMemoryStoreMap, 
-            res_msg.KVStatus[i]);
+            curr_res_msg.KVStatus[i]);
         });
 #else
         tbb::parallel_for(size_t(0), num_keys, [&](size_t i) {
-            putInPliopsDB(plio_handle, submission_queue->req_msg_arr[(currModTail + i) % queueSize], &h_hostDataBank_p->data[(currModTail + i) % queueSize * h_hostDataBank_p->maxValueSize], res_msg.KVStatus[i], res_msg.StorelibStatus[i]);
+            putInPliopsDB(plio_handle, 
+            submission_queue->req_msg_arr[(currModTail + i) % queueSize], 
+            &h_hostDataBank_p->data[(currModTail + i) % queueSize * h_hostDataBank_p->maxValueSize], 
+            curr_res_msg.KVStatus[i], 
+            curr_res_msg.StorelibStatus[i]);
         });
-        
 #endif
     }
     else if (command == CommandType::GET || command == CommandType::MULTI_GET)
     {
 #ifdef STORELIB_LOOPBACK
         for (int i = 0; i < num_keys; i++)
-            res_msg.KVStatus[i] = KVStatusType::SUCCESS;
+            curr_res_msg.KVStatus[i] = KVStatusType::SUCCESS;
 #elif defined(IN_MEMORY_STORE)
         tbb::parallel_for(size_t(0), num_keys, [&](size_t i) {
             getFromMemoryStore(submission_queue->req_msg_arr[(currModTail + i) % queueSize], 
             &h_devDataBank_p->data[(currModTail + i) % queueSize * h_devDataBank_p->maxValueSize], 
             inMemoryStoreMap, 
-            res_msg.KVStatus[i], 
+            curr_res_msg.KVStatus[i], 
             submission_queue->req_msg_arr[(currModTail + i) % queueSize].key);
         });
 #else
@@ -668,8 +712,8 @@ void KeyValueStore::process_kv_request(KVMemHandle &kvMemHandle, int blockIndex,
             getFromPliopsDB(plio_handle, 
             submission_queue->req_msg_arr[(currModTail + i) % queueSize], 
             &h_devDataBank_p->data[(currModTail + i) % queueSize * h_devDataBank_p->maxValueSize], 
-            res_msg.KVStatus[i], 
-            res_msg.StorelibStatus[i], 
+            curr_res_msg.KVStatus[i], 
+            curr_res_msg.StorelibStatus[i], 
             submission_queue->req_msg_arr[(currModTail + i) % queueSize].key);
         });
 #endif
@@ -686,7 +730,7 @@ void KeyValueStore::process_kv_request(KVMemHandle &kvMemHandle, int blockIndex,
         this, 
         std::ref(kvMemHandle), 
         blockIndex, 
-        std::ref(res_msg), 
+        std::ref(curr_res_msg), 
         currModTail, 
         num_keys, 
         keys_buffer, 
@@ -711,19 +755,27 @@ void KeyValueStore::process_kv_request(KVMemHandle &kvMemHandle, int blockIndex,
     else if (command == CommandType::DELETE)
     {
 #ifdef STORELIB_LOOPBACK
-        res_msg.KVStatus[0] = KVStatusType::SUCCESS;
+        curr_res_msg.KVStatus[0] = KVStatusType::SUCCESS;
 #elif defined(IN_MEMORY_STORE)
-        res_msg.KVStatus[0] = KVStatusType::SUCCESS;
+        curr_res_msg.KVStatus[0] = KVStatusType::SUCCESS;
 #else
         ret = PLIOPS_Delete(plio_handle, &req_msg.key, req_msg.keySize, NO_OPTIONS);
-        handle_status(res_msg.KVStatus[0], ret,  req_msg.cmd, req_msg.request_id, req_msg.key);
+        handle_status(curr_res_msg.KVStatus[0], ret,  req_msg.cmd, req_msg.request_id, req_msg.key);
 #endif
+    }
+    else if (command == CommandType::ASYNC_PUT){
+        // Perform a copy of the request message's KVStatus and StorelibStatus array
+        for (int i = 0; i < num_keys; i++){
+            curr_res_msg.KVStatus[i] = res_msg.KVStatus[i];
+            curr_res_msg.StorelibStatus[i] = res_msg.StorelibStatus[i];
+        }
+            
     }
     else
     {
         //std::cout << "Cannot perform command " << (int)req_msg.cmd << std::endl;
         for (int i = 0; i < num_keys; i++)
-            res_msg.KVStatus[i] = KVStatusType::FAIL;
+            curr_res_msg.KVStatus[i] = KVStatusType::FAIL;
     }  
 }
 
@@ -804,7 +856,7 @@ KeyValueStore::KeyValueStore(const int numThreadBlocks, const int blockSize, int
     std::vector<std::thread> threads; // To keep track of the threads, in case you want to join them later
     for (int blockIndex = 0; blockIndex < numThreadBlocks; ++blockIndex) {
         // Launch a thread with a different index
-        std::thread(&KeyValueStore::server_func, this, std::ref(kvMemHandle), blockIndex).detach();
+        std::thread(&KeyValueStore::server_func, this, std::ref(kvMemHandle), blockIndex, maxNumKeys).detach();
     }
     
     // for (int blockIndex = 0; blockIndex < numThreadBlocks; ++blockIndex) {
@@ -954,6 +1006,36 @@ void KeyValueStore::KVDeleteD(void* key, unsigned int keySize, KVStatusType KVSt
     while (!submission_queue->push_delete(&tbResources, tid, CommandType::DELETE, tbResources.request_id, keys, keySize));
     // Immediately wait for a response
     while (!completion_queue->pop_default(&tbResources, tid, KVStatus));
+}
+
+__device__ 
+void KeyValueStore::KVAsyncPutInitiateD(void* keys[], unsigned int keySize, void* buffs[], unsigned int buffSize, int numKeys) {
+    HostSubmissionQueueWithDataBank *d_hostmem_p = h_hostmem_p;
+    DeviceCompletionQueueWithDataBank *d_devmem_p = (DeviceCompletionQueueWithDataBank *)sharedGPUCompletionQueueWithDataBank.getDevicePtr();
+
+    int blockIndex = blockIdx.x;
+    const int tid = THREAD_ID;
+                    
+    ThreadBlockResources &tbResources = d_tbResources[blockIndex];
+    HostAllocatedSubmissionQueue *submission_queue = &d_hostmem_p[blockIndex].sq;
+    DataBank* d_hostDataBank_p = &d_hostmem_p[blockIndex].dataBank;
+    
+    // TODO guy check if completion queue is not full as well
+    while (!submission_queue->push_put(&tbResources, tid, d_hostDataBank_p, CommandType::ASYNC_PUT, tbResources.request_id, keys, keySize, buffSize, buffs, numKeys));
+}
+
+__device__ 
+void KeyValueStore::KVAsyncPutFinalizeD(KVStatusType KVStatus[], int numKeys) {
+    DeviceCompletionQueueWithDataBank *d_devmem_p = (DeviceCompletionQueueWithDataBank *)this->sharedGPUCompletionQueueWithDataBank.getDevicePtr();
+
+    int blockIndex = blockIdx.x;
+    const int tid = THREAD_ID;
+                    
+    ThreadBlockResources &tbResources = this->d_tbResources[blockIndex];
+    DeviceAllocatedCompletionQueue *completion_queue = &d_devmem_p[blockIndex].cq;
+
+    // Immediately wait for a response
+    while (!completion_queue->pop_default(&tbResources, tid, KVStatus, numKeys));
 }
 
 __device__ 

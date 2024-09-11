@@ -20,6 +20,7 @@
 #define DEFAULT_NUM_THREAD_BLOCKS 70
 #define DEFAULT_W_MODE "d"
 #define DEFAULT_R_KERNEL "sync"
+#define DEFAULT_W_KERNEL "sync"
 #define NUM_THREADS_PER_THREAD_BLOCK 512
 #define CONCURRENT_COUNT 10
 
@@ -127,9 +128,7 @@ void check_wrong_answer(int* actual_answer_buf, int expected_answer, int &wrong_
 __global__
 void async_read_kernel_3phase(KeyValueStore *kvStore, UserResources* d_userResources, const int numIterations) {    
     int blockIndex = blockIdx.x;
-    const int tid = threadIdx.z * blockDim.y * blockDim.x 
-                    + threadIdx.y * blockDim.x 
-                    + threadIdx.x;
+    const int tid = THREAD_ID;
                     
     UserResources &userResources = d_userResources[blockIndex];
 #ifdef CHECK_WRONG_ANSWERS
@@ -185,11 +184,9 @@ void async_read_kernel_3phase(KeyValueStore *kvStore, UserResources* d_userResou
 }
 
 __global__
-void async_read_kernel(KeyValueStore *kvStore, UserResources* d_userResources, const int numIterations) {    
+void async_read_kernel_2phase(KeyValueStore *kvStore, UserResources* d_userResources, const int numIterations) {    
     int blockIndex = blockIdx.x;
-    const int tid = threadIdx.z * blockDim.y * blockDim.x 
-                    + threadIdx.y * blockDim.x 
-                    + threadIdx.x;
+    const int tid = THREAD_ID;
                     
     UserResources &userResources = d_userResources[blockIndex];
 #ifdef CHECK_WRONG_ANSWERS
@@ -269,6 +266,53 @@ void read_kernel(KeyValueStore *kvStore, UserResources* d_userResources, const i
 }
 
 __global__
+void async_write_kernel_3phase(KeyValueStore *kvStore, UserResources* d_userResources, const int numIterations) {    
+    int blockIndex = blockIdx.x;
+    const int tid = THREAD_ID;
+                    
+    UserResources &userResources = d_userResources[blockIndex];
+
+    while (userResources.idx < CONCURRENT_COUNT){
+        BEGIN_THREAD_ZERO {
+            userResources.idx++;
+            for (int j = 0; j < NUM_KEYS; j++) {
+                userResources.dataBuffers[j][0] = userResources.idx;
+                userResources.buffs[j] = userResources.dataBuffers[j];
+                userResources.multiKey[j] = userResources.idx + 
+                        blockIndex * numIterations +
+                        j * gridDim.x * numIterations;
+                userResources.keys[j] = &userResources.multiKey[j];
+            }  
+        } END_THREAD_ZERO
+        kvStore->KVAsyncPutInitiateD((void**)userResources.keys, sizeof(int), (void**)userResources.buffs, sizeof(int) * DATA_ARR_SIZE, NUM_KEYS);
+    }
+    
+        
+    while (userResources.idx < numIterations){
+        BEGIN_THREAD_ZERO {
+            userResources.idx++;
+            for (int j = 0; j < NUM_KEYS; j++) {
+                userResources.dataBuffers[j][0] = userResources.idx;
+                userResources.buffs[j] = userResources.dataBuffers[j];
+                userResources.multiKey[j] = userResources.idx + 
+                        blockIndex * numIterations +
+                        j * gridDim.x * numIterations;
+                userResources.keys[j] = &userResources.multiKey[j];
+            }
+        } END_THREAD_ZERO
+        kvStore->KVAsyncPutFinalizeD(userResources.KVStatus, NUM_KEYS);
+        kvStore->KVAsyncPutInitiateD((void**)userResources.keys, sizeof(int), (void**)userResources.buffs, sizeof(int) * DATA_ARR_SIZE, NUM_KEYS);
+    }
+    
+    while (userResources.idx < numIterations + CONCURRENT_COUNT){
+        BEGIN_THREAD_ZERO {
+            userResources.idx++;
+        } END_THREAD_ZERO
+        kvStore->KVAsyncPutFinalizeD(userResources.KVStatus, NUM_KEYS);
+    }
+}
+
+__global__
 void write_kernel(KeyValueStore *kvStore, UserResources* d_userResources, const int numIterations) {    
     int blockIndex = blockIdx.x;
     const int tid = THREAD_ID;
@@ -288,7 +332,10 @@ void write_kernel(KeyValueStore *kvStore, UserResources* d_userResources, const 
             }        
         } END_THREAD_ZERO
 
-        kvStore->KVMultiPutD((void**)userResources.keys, sizeof(int), (void**)userResources.buffs, sizeof(int) * DATA_ARR_SIZE, userResources.KVStatus, NUM_KEYS);
+        // kvStore->KVMultiPutD((void**)userResources.keys, sizeof(int), (void**)userResources.buffs, sizeof(int) * DATA_ARR_SIZE, userResources.KVStatus, NUM_KEYS);
+        kvStore->KVAsyncPutInitiateD((void**)userResources.keys, sizeof(int), (void**)userResources.buffs, sizeof(int) * DATA_ARR_SIZE, NUM_KEYS);
+        kvStore->KVAsyncPutFinalizeD(userResources.KVStatus, NUM_KEYS);
+
     }
     BEGIN_THREAD_ZERO {
     }
@@ -441,10 +488,11 @@ void showHelp(const std::vector<Option> &options) {
     }
 }
 
-void parseArguments(int argc, char* argv[], int &numThreadBlocks, std::string &wMode, std::string &rKernel) {
+void parseArguments(int argc, char* argv[], int &numThreadBlocks, std::string &wMode, std::string &rKernel, std::string &wKernel) {
     std::vector<Option> options = {
         {"--tb, --thread-blocks <num>", "Specify the number of thread blocks (e.g., --tb 4)"},
         {"--w, --write <host|device>", "Specify write mode as host (h) or device (d) (e.g., --w host)"},
+        {"--wk, --write-kernel <sync|async>", "Specify write kernel as sync or async (e.g., --rk sync)"},
         {"--rk, --read-kernel <sync|async>", "Specify read kernel as sync or async (e.g., --rk sync)"},
         {"--help, -h", "Show this help message"}
     };
@@ -479,10 +527,27 @@ void parseArguments(int argc, char* argv[], int &numThreadBlocks, std::string &w
                 std::cout << "Read kernel unavailable, choose sync or async. Using default value " << rKernel << std::endl;
             }
         }
+        if ((strcmp(argv[i], "--wk") == 0 || strcmp(argv[i], "--write-kernel") == 0) && i + 1 < argc) {
+            if (wMode == "h"){
+                std::cout << "Write kernel is only available in device mode. Ignoring write kernel argument." << std::endl;
+                continue;
+            }
+            
+            wKernel = argv[++i];
+            std::transform(wKernel.begin(), wKernel.end(), wKernel.begin(), [](unsigned char c){ return std::tolower(c); });
+            if (wKernel == "sync")
+                wKernel = "sync";
+            else if (wKernel == "async")
+                wKernel = "async";
+            else {
+                std::cout << "Write kernel unavailable, choose sync or async. Using default value " << wKernel << std::endl;
+            }
+        }
+
     }
 }
 
-void printSettings(int numThreadBlocks, int blockSize, const std::string &wMode, const std::string &rKernel){
+void printSettings(int numThreadBlocks, int blockSize, const std::string &wMode, const std::string &rKernel, std::string &wKernel){
     std::cout << "---------------------------------------" << std::endl;
     std::cout << "Settings:" << std::endl;
     std::cout << "Using " << numThreadBlocks << " thread blocks." << std::endl;
@@ -513,8 +578,9 @@ int main(int argc, char* argv[]) {
     const int blockSize = NUM_THREADS_PER_THREAD_BLOCK;
     std::string wMode = DEFAULT_W_MODE;
     std::string rKernel = DEFAULT_R_KERNEL;
-    parseArguments(argc, argv, numThreadBlocks, wMode, rKernel);
-    printSettings(numThreadBlocks, blockSize, wMode, rKernel);
+    std::string wKernel = DEFAULT_W_KERNEL;
+    parseArguments(argc, argv, numThreadBlocks, wMode, rKernel, wKernel);
+    printSettings(numThreadBlocks, blockSize, wMode, rKernel, wKernel);
     saveYAMLToFile();
 
     KVMemHandle kvMemHandle;
@@ -550,9 +616,14 @@ int main(int argc, char* argv[]) {
         InitData<<<numThreadBlocks, 1>>>(d_userResources);
         CUDA_ERRCHECK(cudaDeviceSynchronize());
 
+        // sync_and_measure_time([&]() {
+        //     write_kernel<<<numThreadBlocks, blockSize>>>(kvStore, d_userResources, NUM_ITERATIONS);
+        // }, "write_kernel", numThreadBlocks);
+
         sync_and_measure_time([&]() {
-            write_kernel<<<numThreadBlocks, blockSize>>>(kvStore, d_userResources, NUM_ITERATIONS);
-        }, "write_kernel", numThreadBlocks);
+            async_write_kernel_3phase<<<numThreadBlocks, blockSize>>>(kvStore, d_userResources, NUM_ITERATIONS);
+        }, "async_write_kernel_3phase", numThreadBlocks);
+        
     }
 
     // Reset user resources idx before running a second kernel

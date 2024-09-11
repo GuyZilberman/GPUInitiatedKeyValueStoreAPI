@@ -2,7 +2,7 @@ import subprocess
 
 def run_command(command):
     """Run a shell command and stream the output, returning the full log."""
-    print(f"Running: {command}")
+    print(f"\033[95m{command}\033[0m")
     process = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     
     full_log = ""
@@ -25,34 +25,29 @@ def run_command(command):
 def check_for_wrong(log, context):
     """Check if the word 'wrong' is in the log."""
     if "wrong" in log.lower():
-        print(f"Wrong answer detected during {context}, aborting.")
+        print(f"\033[91mWrong answer detected during {context}, aborting.\033[0m")
         return True
     return False
 
 def run_all_tests(mode):
-    print("=============================================================")
-    # Run the program with async option
-    success, log = run_command("./kvapp --tb 1 --rk async")
-    if not success or check_for_wrong(log, mode + " "  + "async"):
-        exit(1)
-    
-    print("=============================================================")
-    # Run the program with sync option
-    success, log = run_command("./kvapp --tb 1 --rk sync")
-    if not success or check_for_wrong(log, mode + " "  + "sync"):
-        exit(1)
-    
-    print("=============================================================")
-    # Run the program with async option and host writes
-    success, log = run_command("./kvapp --w host --tb 1 --rk async")
-    if not success or check_for_wrong(log, mode + " "  + "host writes + async"):
-        exit(1)
-    
-    print("=============================================================")
-    # Run the program with sync option and host writes
-    success, log = run_command("./kvapp --w host --tb 1 --rk sync")
-    if not success or check_for_wrong(log, mode + " "  + "host writes + sync"):
-        exit(1)
+    read_kernels = ["sync", "async"]
+    write_kernels = ["sync", "async"]
+    write_modes = ["device", "host"]
+
+    for read_kernel in read_kernels:
+        for write_kernel in write_kernels:
+            for write_mode in write_modes:
+                print("=============================================================")
+                # Construct the command based on the kernels
+                if write_mode == "host":
+                    command = f"./kvapp --tb 1 --w {write_mode} --rk {read_kernel}"
+                else: # device
+                    command = f"./kvapp --tb 1 --w {write_mode} --wk {write_kernel} --rk {read_kernel}"
+                
+                # Run the command and check the result
+                success, log = run_command(command)
+                if not success or check_for_wrong(log, f"{mode} {write_mode} writes + {read_kernel}"):
+                    exit(1)
 
 def main():
     print("=============================================================")
@@ -74,7 +69,7 @@ def main():
     run_all_tests("IN_MEMORY_STORE")
 
     print("=============================================================")
-    print("All commands executed successfully without any wrong answers in the logs.")
+    print("\033[92mAll commands executed successfully without any wrong answers in the logs.\033[0m")
 
 if __name__ == "__main__":
     main()
