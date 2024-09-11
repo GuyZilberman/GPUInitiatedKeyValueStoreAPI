@@ -616,14 +616,16 @@ int main(int argc, char* argv[]) {
         InitData<<<numThreadBlocks, 1>>>(d_userResources);
         CUDA_ERRCHECK(cudaDeviceSynchronize());
 
-        // sync_and_measure_time([&]() {
-        //     write_kernel<<<numThreadBlocks, blockSize>>>(kvStore, d_userResources, NUM_ITERATIONS);
-        // }, "write_kernel", numThreadBlocks);
-
-        sync_and_measure_time([&]() {
-            async_write_kernel_3phase<<<numThreadBlocks, blockSize>>>(kvStore, d_userResources, NUM_ITERATIONS);
-        }, "async_write_kernel_3phase", numThreadBlocks);
-        
+        if (wKernel == "sync"){
+            sync_and_measure_time([&]() {
+                write_kernel<<<numThreadBlocks, blockSize>>>(kvStore, d_userResources, NUM_ITERATIONS);
+            }, "write_kernel", numThreadBlocks);
+        }
+        else if (wKernel == "async"){
+            sync_and_measure_time([&]() {
+                async_write_kernel_3phase<<<numThreadBlocks, blockSize>>>(kvStore, d_userResources, NUM_ITERATIONS);
+            }, "async_write_kernel_3phase", numThreadBlocks);
+        }        
     }
 
     // Reset user resources idx before running a second kernel

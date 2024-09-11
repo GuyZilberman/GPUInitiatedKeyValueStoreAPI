@@ -9,7 +9,9 @@ std::string getCommandString(CommandType command) {
         {CommandType::MULTI_GET, "PLIOPS_MultiGet"},
         {CommandType::DELETE, "PLIOPS_Delete"},
         {CommandType::ASYNC_GET_FINALIZE, "ASYNC_GET_FINALIZE"},
-        {CommandType::ASYNC_GET_INITIATE, "ASYNC_GET_INITIATE"}
+        {CommandType::ASYNC_GET_INITIATE, "ASYNC_GET_INITIATE"},
+        {CommandType::ASYNC_GET_INITIATE, "ASYNC_GET_INITIATE"},
+        {CommandType::ASYNC_PUT, "ASYNC_PUT"}
     };
 
     auto it = commandStrings.find(command);
