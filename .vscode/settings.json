@@ -62,6 +62,10 @@
         "typeinfo": "cpp",
         "valarray": "cpp",
         "bit": "cpp",
-        "__nullptr": "cpp"
+        "__nullptr": "cpp",
+        "filesystem": "cpp",
+        "queue": "cpp",
+        "stack": "cpp",
+        "__node_handle": "cpp"
     }
 }

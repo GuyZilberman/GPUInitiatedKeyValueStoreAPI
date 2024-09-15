@@ -126,6 +126,64 @@ void check_wrong_answer(int* actual_answer_buf, int expected_answer, int &wrong_
 }
 
 __global__
+void async_read_kernel_3phase_new(KeyValueStore *kvStore, UserResources* d_userResources, const int numIterations) {    
+    int blockIndex = blockIdx.x;
+    const int tid = THREAD_ID;
+                    
+    UserResources &userResources = d_userResources[blockIndex];
+#ifdef CHECK_WRONG_ANSWERS
+    int wrong_answers = 0;
+#endif
+
+    while (userResources.idx < CONCURRENT_COUNT){
+        BEGIN_THREAD_ZERO {
+            userResources.idx++;
+            for (int j = 0; j < NUM_KEYS; j++) {
+                userResources.multiKey[j] = userResources.idx + 
+                        blockIndex * numIterations +
+                        j * gridDim.x * numIterations;
+                userResources.keys[j] = &userResources.multiKey[j];
+            }  
+        } END_THREAD_ZERO
+        kvStore->KVAsyncGetInitiateD((void**)userResources.keys, sizeof(int), (void**)userResources.buffs, sizeof(int) * DATA_ARR_SIZE, NUM_KEYS);
+
+    }
+    
+    while (userResources.idx < numIterations){
+        BEGIN_THREAD_ZERO {
+            userResources.idx++;
+            for (int j = 0; j < NUM_KEYS; j++) {
+                userResources.multiKey[j] = userResources.idx + 
+                        blockIndex * numIterations +
+                        j * gridDim.x * numIterations;
+                userResources.keys[j] = &userResources.multiKey[j];
+            }
+        } END_THREAD_ZERO
+        kvStore->KVAsyncGetFinalizeD((void**)userResources.buffs, sizeof(int) * DATA_ARR_SIZE, userResources.KVStatus, NUM_KEYS);
+#ifdef CHECK_WRONG_ANSWERS
+        for (size_t i = 0; i < NUM_KEYS; i++)
+        {
+            check_wrong_answer((int*) userResources.buffs[i], userResources.idx, wrong_answers);
+        }
+#endif
+    kvStore->KVAsyncGetInitiateD((void**)userResources.keys, sizeof(int), (void**)userResources.buffs, sizeof(int) * DATA_ARR_SIZE, NUM_KEYS);
+    }
+    
+    while (userResources.idx < numIterations + CONCURRENT_COUNT){
+        BEGIN_THREAD_ZERO {
+            userResources.idx++;
+        } END_THREAD_ZERO
+        kvStore->KVAsyncGetFinalizeD((void**)userResources.buffs, sizeof(int) * DATA_ARR_SIZE, userResources.KVStatus, NUM_KEYS);
+#ifdef CHECK_WRONG_ANSWERS
+        for (size_t i = 0; i < NUM_KEYS; i++)
+        {
+            check_wrong_answer((int*) userResources.buffs[i], userResources.idx, wrong_answers);
+        }
+#endif
+    }
+}
+
+__global__
 void async_read_kernel_3phase(KeyValueStore *kvStore, UserResources* d_userResources, const int numIterations) {    
     int blockIndex = blockIdx.x;
     const int tid = THREAD_ID;
@@ -492,7 +550,7 @@ void parseArguments(int argc, char* argv[], int &numThreadBlocks, std::string &w
     std::vector<Option> options = {
         {"--tb, --thread-blocks <num>", "Specify the number of thread blocks (e.g., --tb 4)"},
         {"--w, --write <host|device>", "Specify write mode as host (h) or device (d) (e.g., --w host)"},
-        {"--wk, --write-kernel <sync|async>", "Specify write kernel as sync or async (e.g., --rk sync)"},
+        {"--wk, --write-kernel <sync|async>", "Specify write kernel as sync or async (e.g., --wk sync)"},
         {"--rk, --read-kernel <sync|async>", "Specify read kernel as sync or async (e.g., --rk sync)"},
         {"--help, -h", "Show this help message"}
     };

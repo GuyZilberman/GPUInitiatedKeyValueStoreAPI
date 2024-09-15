@@ -70,7 +70,8 @@ enum class CommandType {
     MULTI_GET,
     ASYNC_GET_INITIATE,
     ASYNC_GET_FINALIZE,
-    ASYNC_PUT
+    ASYNC_PUT,
+    ASYNC_GET
 };
 
 enum class KVStatusType {
@@ -99,6 +100,7 @@ struct RequestMessage {
     int numKeys;
     unsigned int ticket;
 
+    RequestMessage(int maxNumKeys, int maxKeySize);
     RequestMessage(int keySize);
     RequestMessage(const RequestMessage& other);
     ~RequestMessage();
@@ -230,10 +232,10 @@ public:
     ~DeviceAllocatedCompletionQueue();
 
     __host__
-    bool push(KeyValueStore *kvStore, KVMemHandle &kvMemHandle, int blockIndex, int currModHead, RequestMessage &req_msg, ResponseMessage &res_msg);
+    bool push(KeyValueStore *kvStore, KVMemHandle &kvMemHandle, int blockIndex, int currModHead, RequestMessage &async_req_msg, ResponseMessage &async_res_msg, CommandType command, int &numKeys);
 
     __device__ 
-    bool pop_get(ThreadBlockResources* d_tbResources, void* buffs[], int buffSize, const int tid, DataBank* d_databank_p, CommandType cmd, KVStatusType KVStatus[], int numKeys);
+    bool pop_get(ThreadBlockResources* d_tbResources, void* buffs[], int buffSize, const int tid, DataBank* d_databank_p, KVStatusType KVStatus[], int numKeys);
 
     __device__ 
     bool pop_default(ThreadBlockResources* d_tbResources, const int tid, KVStatusType KVStatus[], int numKeys = 1);
@@ -257,7 +259,7 @@ struct HostSubmissionQueueWithDataBank {
 
     HostSubmissionQueueWithDataBank(gdr_mh_t &mh, int queueSize, int maxValueSize, int maxKeySize);
 
-    void pop(const int currHead, KVMemHandle &kvMemHandle, int &currModHead, ResponseMessage &res_msg);
+    void pop(const int currHead, KVMemHandle &kvMemHandle, int &currModHead, RequestMessage &async_req_msg, ResponseMessage &async_res_msg, CommandType &command, int &numKeys);
 };
 
 #ifdef IN_MEMORY_STORE
@@ -282,11 +284,11 @@ class KeyValueStore {
         __device__ 
         void KVGetBaseD(void* keys[], const unsigned int keySize, void* buffs[], const unsigned int buffSize, KVStatusType KVStatus[], CommandType cmd, int numKeys = 1);
 
-        void server_func(KVMemHandle &kvMemHandle, int blockIndex, int maxNumKeys);
+        void server_func(KVMemHandle &kvMemHandle, int blockIndex, int maxNumKeys, int maxKeySize);
 
         void process_async_get(KVMemHandle &kvMemHandle, int blockIndex, ResponseMessage &res_msg, int currModTail, size_t num_keys, void* keys_buffer, RequestMessage* p_req_msg_cpy);
 
-        void process_kv_request(KVMemHandle &kvMemHandle, int blockIndex, ResponseMessage *res_msg_arr, int currTail, RequestMessage &req_msg, ResponseMessage &res_msg);
+        void process_kv_request(KVMemHandle &kvMemHandle, int blockIndex, ResponseMessage *curr_res_msg_arr, int currTail, RequestMessage &async_req_msg, ResponseMessage &async_res_msg, CommandType command, int& numKeys);
 
         bool checkParameters(int queueSize, int maxValueSize, int maxNumKeys, int maxKeySize);
 
@@ -330,6 +332,12 @@ class KeyValueStore {
 
         __device__
         void KVAsyncPutFinalizeD(KVStatusType KVStatus[], int numKeys);
+        
+        __device__
+        void KVAsyncGetInitiateD(void* keys[], const unsigned int keySize, void* buffs[], const unsigned int buffSize, int numKeys);
+
+        __device__
+        void KVAsyncGetFinalizeD(void* buffs[], const unsigned int buffSize, KVStatusType KVStatus[], int numKeys);
 
         __device__
         void KVAsyncGetInitiateD(void* keys[], const unsigned int keySize, GPUMultiBufferHandle& valMultiBuff, const unsigned int buffSize, GPUMultiBufferHandle& kvStatusMultiBuff, int numKeys, unsigned int *p_ticket);
