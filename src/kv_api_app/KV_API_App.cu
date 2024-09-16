@@ -143,10 +143,10 @@ void async_read_kernel_3phase_new(KeyValueStore *kvStore, UserResources* d_userR
                         blockIndex * numIterations +
                         j * gridDim.x * numIterations;
                 userResources.keys[j] = &userResources.multiKey[j];
+                userResources.buffs[j] = userResources.dataBuffers[j];
             }  
         } END_THREAD_ZERO
-        kvStore->KVAsyncGetInitiateD((void**)userResources.keys, sizeof(int), (void**)userResources.buffs, sizeof(int) * DATA_ARR_SIZE, NUM_KEYS);
-
+        kvStore->KVAsyncGetInitiateD((void**)userResources.keys, sizeof(int), sizeof(int) * DATA_ARR_SIZE, NUM_KEYS);
     }
     
     while (userResources.idx < numIterations){
@@ -157,16 +157,17 @@ void async_read_kernel_3phase_new(KeyValueStore *kvStore, UserResources* d_userR
                         blockIndex * numIterations +
                         j * gridDim.x * numIterations;
                 userResources.keys[j] = &userResources.multiKey[j];
+                userResources.buffs[j] = userResources.dataBuffers[j];
             }
         } END_THREAD_ZERO
         kvStore->KVAsyncGetFinalizeD((void**)userResources.buffs, sizeof(int) * DATA_ARR_SIZE, userResources.KVStatus, NUM_KEYS);
 #ifdef CHECK_WRONG_ANSWERS
         for (size_t i = 0; i < NUM_KEYS; i++)
         {
-            check_wrong_answer((int*) userResources.buffs[i], userResources.idx, wrong_answers);
+            check_wrong_answer((int*) userResources.buffs[i], userResources.idx - CONCURRENT_COUNT, wrong_answers);
         }
 #endif
-    kvStore->KVAsyncGetInitiateD((void**)userResources.keys, sizeof(int), (void**)userResources.buffs, sizeof(int) * DATA_ARR_SIZE, NUM_KEYS);
+    kvStore->KVAsyncGetInitiateD((void**)userResources.keys, sizeof(int), sizeof(int) * DATA_ARR_SIZE, NUM_KEYS);
     }
     
     while (userResources.idx < numIterations + CONCURRENT_COUNT){
@@ -177,7 +178,7 @@ void async_read_kernel_3phase_new(KeyValueStore *kvStore, UserResources* d_userR
 #ifdef CHECK_WRONG_ANSWERS
         for (size_t i = 0; i < NUM_KEYS; i++)
         {
-            check_wrong_answer((int*) userResources.buffs[i], userResources.idx, wrong_answers);
+            check_wrong_answer((int*) userResources.buffs[i], userResources.idx - CONCURRENT_COUNT, wrong_answers);
         }
 #endif
     }
@@ -390,10 +391,7 @@ void write_kernel(KeyValueStore *kvStore, UserResources* d_userResources, const 
             }        
         } END_THREAD_ZERO
 
-        // kvStore->KVMultiPutD((void**)userResources.keys, sizeof(int), (void**)userResources.buffs, sizeof(int) * DATA_ARR_SIZE, userResources.KVStatus, NUM_KEYS);
-        kvStore->KVAsyncPutInitiateD((void**)userResources.keys, sizeof(int), (void**)userResources.buffs, sizeof(int) * DATA_ARR_SIZE, NUM_KEYS);
-        kvStore->KVAsyncPutFinalizeD(userResources.KVStatus, NUM_KEYS);
-
+        kvStore->KVMultiPutD((void**)userResources.keys, sizeof(int), (void**)userResources.buffs, sizeof(int) * DATA_ARR_SIZE, userResources.KVStatus, NUM_KEYS);
     }
     BEGIN_THREAD_ZERO {
     }
@@ -611,6 +609,7 @@ void printSettings(int numThreadBlocks, int blockSize, const std::string &wMode,
     std::cout << "Using " << numThreadBlocks << " thread blocks." << std::endl;
     std::cout << "Block size: " << blockSize << " threads per block." << std::endl;
     std::cout << "Write mode: " << wMode << std::endl;
+    std::cout << "Write Kernel: " << wKernel << std::endl;
     std::cout << "Read Kernel: " << rKernel << std::endl;
     std::cout << "NUM_ITERATIONS: " << NUM_ITERATIONS << std::endl;
     std::cout << "CONCURRENT_COUNT: " << CONCURRENT_COUNT << std::endl;
@@ -675,6 +674,7 @@ int main(int argc, char* argv[]) {
         CUDA_ERRCHECK(cudaDeviceSynchronize());
 
         if (wKernel == "sync"){
+            printf("wKernel: %s\n", wKernel.c_str());
             sync_and_measure_time([&]() {
                 write_kernel<<<numThreadBlocks, blockSize>>>(kvStore, d_userResources, NUM_ITERATIONS);
             }, "write_kernel", numThreadBlocks);
@@ -697,8 +697,8 @@ int main(int argc, char* argv[]) {
     }
     else if (rKernel == "async"){
         sync_and_measure_time([&]() {
-            async_read_kernel_3phase<<<numThreadBlocks, blockSize>>>(kvStore, d_userResources, NUM_ITERATIONS);
-        }, "async_read_kernel_3phase", numThreadBlocks);
+            async_read_kernel_3phase_new<<<numThreadBlocks, blockSize>>>(kvStore, d_userResources, NUM_ITERATIONS);
+        }, "async_read_kernel_3phase_new", numThreadBlocks);
     }
 
     // GPU memory free:

@@ -10,7 +10,6 @@ std::string getCommandString(CommandType command) {
         {CommandType::DELETE, "PLIOPS_Delete"},
         {CommandType::ASYNC_GET_FINALIZE, "ASYNC_GET_FINALIZE"},
         {CommandType::ASYNC_GET_INITIATE, "ASYNC_GET_INITIATE"},
-        {CommandType::ASYNC_GET_INITIATE, "ASYNC_GET_INITIATE"},
         {CommandType::ASYNC_PUT, "ASYNC_PUT"},
         {CommandType::ASYNC_GET, "ASYNC_GET"},
     };
@@ -406,7 +405,7 @@ bool DeviceAllocatedCompletionQueue::pop_get(ThreadBlockResources* d_tbResources
     int idx;
     for (size_t i = 0; i < numKeys; i++)
     {
-        idx = ((d_tbResources->currModTail + i) % this->queueSize) * d_databank_p->maxValueSize;
+        idx = ((d_tbResources->currModHead + i) % this->queueSize) * d_databank_p->maxValueSize;
         copyData((unsigned char*)buffs[i], (const unsigned char*)(&d_data_p[idx]), buffSize, tid);
     }
     copyResponseMessage(d_tbResources, tid, numKeys, KVStatus);
@@ -470,7 +469,7 @@ void HostSubmissionQueueWithDataBank::pop(const int currHead, KVMemHandle &kvMem
     command = sq.req_msg_arr[currModHead].cmd;
     numKeys = sq.req_msg_arr[currModHead].numKeys;
     int &incrementSize = numKeys;
-
+    
     if (command == CommandType::ASYNC_PUT)
     {
         size_t num_keys = sq.req_msg_arr[currModHead].numKeys;
@@ -497,15 +496,15 @@ void HostSubmissionQueueWithDataBank::pop(const int currHead, KVMemHandle &kvMem
         });
 #endif
     }
-    else if (command == CommandType::ASYNC_PUT){
+    else if (command == CommandType::ASYNC_GET){
         async_req_msg.cmd = sq.req_msg_arr[currModHead].cmd;
         async_req_msg.keySize = sq.req_msg_arr[currModHead].keySize;
         async_req_msg.numKeys = sq.req_msg_arr[currModHead].numKeys;
-        for(size_t i = 0; i < sq.req_msg_arr[currModHead].keySize * sq.req_msg_arr[currModHead].numKeys; i++)
-            ((unsigned char*)(async_req_msg.key))[i] = ((unsigned char*)sq.req_msg_arr[currModHead].key)[i];
+        for (size_t i = 0; i < async_req_msg.numKeys; i++)
+            for (size_t j = 0; j < async_req_msg.keySize; j++)
+                ((unsigned char*)(async_req_msg.key))[j + i * async_req_msg.keySize] = ((unsigned char*)sq.req_msg_arr[(currModHead + i) % sq.queueSize].key)[j];
         async_req_msg.buffSize = sq.req_msg_arr[currModHead].buffSize;
     }
-
     sq.head.store(currHead + incrementSize, cuda::memory_order_release);
 }
 
@@ -1084,7 +1083,7 @@ void KeyValueStore::KVAsyncPutFinalizeD(KVStatusType KVStatus[], int numKeys) {
 
 // Async Get
 __device__ 
-void KeyValueStore::KVAsyncGetInitiateD(void* keys[], const unsigned int keySize, void* buffs[], const unsigned int buffSize, int numKeys) {
+void KeyValueStore::KVAsyncGetInitiateD(void* keys[], const unsigned int keySize, const unsigned int buffSize, int numKeys) {
     HostSubmissionQueueWithDataBank *d_hostmem_p = this->h_hostmem_p;
     DeviceCompletionQueueWithDataBank *d_devmem_p = (DeviceCompletionQueueWithDataBank *)this->sharedGPUCompletionQueueWithDataBank.getDevicePtr();
     int blockIndex = blockIdx.x;

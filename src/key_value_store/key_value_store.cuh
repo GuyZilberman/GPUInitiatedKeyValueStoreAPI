@@ -334,7 +334,7 @@ class KeyValueStore {
         void KVAsyncPutFinalizeD(KVStatusType KVStatus[], int numKeys);
         
         __device__
-        void KVAsyncGetInitiateD(void* keys[], const unsigned int keySize, void* buffs[], const unsigned int buffSize, int numKeys);
+        void KVAsyncGetInitiateD(void* keys[], const unsigned int keySize, const unsigned int buffSize, int numKeys);
 
         __device__
         void KVAsyncGetFinalizeD(void* buffs[], const unsigned int buffSize, KVStatusType KVStatus[], int numKeys);
