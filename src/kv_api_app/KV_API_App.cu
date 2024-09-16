@@ -146,7 +146,7 @@ void async_read_kernel_3phase_new(KeyValueStore *kvStore, UserResources* d_userR
                 userResources.buffs[j] = userResources.dataBuffers[j];
             }  
         } END_THREAD_ZERO
-        kvStore->KVAsyncGetInitiateD((void**)userResources.keys, sizeof(int), sizeof(int) * DATA_ARR_SIZE, NUM_KEYS);
+        kvStore->KVAsyncGetInitiateD((void**)userResources.keys, sizeof(int), NUM_KEYS);
     }
     
     while (userResources.idx < numIterations){
@@ -167,7 +167,7 @@ void async_read_kernel_3phase_new(KeyValueStore *kvStore, UserResources* d_userR
             check_wrong_answer((int*) userResources.buffs[i], userResources.idx - CONCURRENT_COUNT, wrong_answers);
         }
 #endif
-    kvStore->KVAsyncGetInitiateD((void**)userResources.keys, sizeof(int), sizeof(int) * DATA_ARR_SIZE, NUM_KEYS);
+    kvStore->KVAsyncGetInitiateD((void**)userResources.keys, sizeof(int), NUM_KEYS);
     }
     
     while (userResources.idx < numIterations + CONCURRENT_COUNT){

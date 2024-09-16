@@ -47,11 +47,16 @@ struct KeyHasher{
 
     bool equal(const std::array<unsigned char, MAX_KEY_SIZE>& key1, const std::array<unsigned char, MAX_KEY_SIZE>& key2) const;
 };
+
+struct InMemoryValue{
+    std::array<unsigned char, MAX_VALUE_SIZE> value;
+    int valueSize;
+};
 #endif
 
 struct KVMemHandle{
 #ifdef IN_MEMORY_STORE
-    tbb::concurrent_hash_map<std::array<unsigned char, MAX_KEY_SIZE>, std::array<unsigned char, MAX_VALUE_SIZE>, KeyHasher> inMemoryStoreMap;
+    tbb::concurrent_hash_map<std::array<unsigned char, MAX_KEY_SIZE>, InMemoryValue, KeyHasher> inMemoryStoreMap;
 #else
     PLIOPS_IDENTIFY_t identify;
     PLIOPS_DB_t plio_handle;
@@ -167,10 +172,10 @@ public:
     ~HostAllocatedSubmissionQueue();
 
     __device__
-    void copyMetaDataDelete(ThreadBlockResources* d_tbResources, CommandType cmd, const uint request_id, void** keys, int keySize, int numKeys, const int tid);
+    void copyMetaDataDeleteAndGet(ThreadBlockResources* d_tbResources, CommandType cmd, const uint request_id, void** keys, int keySize, int numKeys, const int tid);
 
     __device__
-    void copyMetaDataPutAndGet(ThreadBlockResources* d_tbResources, CommandType cmd, const uint request_id, void** keys, int keySize, int buffSize, int numKeys, const int tid);
+    void copyMetaDataPut(ThreadBlockResources* d_tbResources, CommandType cmd, const uint request_id, void** keys, int keySize, int buffSize, int numKeys, const int tid);
 
     __device__
     void copyMetaDataAsyncGet(ThreadBlockResources* d_tbResources, CommandType cmd, const uint request_id, void** keys, int keySize, void** buffs, int buffSize, KVStatusType KVStatus[], int numKeys, const int tid);
@@ -179,7 +184,7 @@ public:
     bool push_put(ThreadBlockResources* d_tbResources, const int tid, DataBank* d_databank_p, CommandType cmd, const uint request_id, void** keys, int keySize, int buffSize, void** buffs, int numKeys);
     
     __device__ 
-    bool push_get(ThreadBlockResources* d_tbResources, const int tid, CommandType cmd, const uint request_id, void** keys, int keySize, int buffSize, int numKeys);
+    bool push_get(ThreadBlockResources* d_tbResources, const int tid, CommandType cmd, const uint request_id, void** keys, int keySize, int numKeys);
 
     __device__
     bool push_async_get_initiate(ThreadBlockResources* d_tbResources, const int tid, CommandType cmd, const uint request_id, void** keys, int keySize, void** buffs, int buffSize, KVStatusType KVStatus[], int numKeys);
@@ -263,11 +268,11 @@ struct HostSubmissionQueueWithDataBank {
 };
 
 #ifdef IN_MEMORY_STORE
-void putInMemoryStore(RequestMessage &req_msg, void* data, tbb::concurrent_hash_map<std::array<unsigned char, MAX_KEY_SIZE>, std::array<unsigned char, MAX_VALUE_SIZE>, KeyHasher> &inMemoryStoreMap, KVStatusType &res_ans);
-void getFromMemoryStore(RequestMessage &req_msg, void* data, tbb::concurrent_hash_map<std::array<unsigned char, MAX_KEY_SIZE>, std::array<unsigned char, MAX_VALUE_SIZE>, KeyHasher> &inMemoryStoreMap, KVStatusType &res_ans, void* key);
+void putInMemoryStore(RequestMessage &req_msg, void* data, tbb::concurrent_hash_map<std::array<unsigned char, MAX_KEY_SIZE>, InMemoryValue, KeyHasher> &inMemoryStoreMap, KVStatusType &res_ans);
+void getFromMemoryStore(RequestMessage &req_msg, void* data, tbb::concurrent_hash_map<std::array<unsigned char, MAX_KEY_SIZE>, InMemoryValue, KeyHasher> &inMemoryStoreMap, KVStatusType &res_ans, void* key);
 #else
 void putInPliopsDB(PLIOPS_DB_t &plio_handle, RequestMessage &req_msg, void *data, KVStatusType &KVStatus, int &StorelibStatus);
-void getFromPliopsDB(PLIOPS_DB_t &plio_handle, RequestMessage &req_msg, void *data, KVStatusType &KVStatus, int &StorelibStatus, void* key);
+void getFromPliopsDB(PLIOPS_DB_t &plio_handle, RequestMessage &req_msg, void *data, KVStatusType &KVStatus, int &StorelibStatus, void* key, int buffSize);
 #endif
 
 class KeyValueStore {
@@ -334,7 +339,7 @@ class KeyValueStore {
         void KVAsyncPutFinalizeD(KVStatusType KVStatus[], int numKeys);
         
         __device__
-        void KVAsyncGetInitiateD(void* keys[], const unsigned int keySize, const unsigned int buffSize, int numKeys);
+        void KVAsyncGetInitiateD(void* keys[], const unsigned int keySize, int numKeys);
 
         __device__
         void KVAsyncGetFinalizeD(void* buffs[], const unsigned int buffSize, KVStatusType KVStatus[], int numKeys);
