@@ -126,7 +126,7 @@ void check_wrong_answer(int* actual_answer_buf, int expected_answer, int &wrong_
 }
 
 __global__
-void async_read_kernel_3phase_new(KeyValueStore *kvStore, UserResources* d_userResources, const int numIterations) {    
+void async_read_kernel_3phase(KeyValueStore *kvStore, UserResources* d_userResources, const int numIterations) {    
     int blockIndex = blockIdx.x;
     const int tid = THREAD_ID;
                     
@@ -185,7 +185,7 @@ void async_read_kernel_3phase_new(KeyValueStore *kvStore, UserResources* d_userR
 }
 
 __global__
-void async_read_kernel_3phase(KeyValueStore *kvStore, UserResources* d_userResources, const int numIterations) {    
+void async_read_kernel_3phase_ZC(KeyValueStore *kvStore, UserResources* d_userResources, const int numIterations) {    
     int blockIndex = blockIdx.x;
     const int tid = THREAD_ID;
                     
@@ -205,7 +205,7 @@ void async_read_kernel_3phase(KeyValueStore *kvStore, UserResources* d_userResou
                 userResources.keys[j] = &userResources.multiKey[j];
             }  
         } END_THREAD_ZERO
-        kvStore->KVAsyncGetInitiateD((void**)userResources.keys, sizeof(int), userResources.arrOfUserMultiBuffer[userResources.idx % CONCURRENT_COUNT], sizeof(int) * DATA_ARR_SIZE, userResources.arrOfUserKVStatusArr[userResources.idx % CONCURRENT_COUNT], NUM_KEYS, &ticket_arr[userResources.idx % CONCURRENT_COUNT]);
+        kvStore->KVAsyncGetZCInitiateD((void**)userResources.keys, sizeof(int), userResources.arrOfUserMultiBuffer[userResources.idx % CONCURRENT_COUNT], sizeof(int) * DATA_ARR_SIZE, userResources.arrOfUserKVStatusArr[userResources.idx % CONCURRENT_COUNT], NUM_KEYS, &ticket_arr[userResources.idx % CONCURRENT_COUNT]);
     }
     
     while (userResources.idx < numIterations){
@@ -218,21 +218,21 @@ void async_read_kernel_3phase(KeyValueStore *kvStore, UserResources* d_userResou
                 userResources.keys[j] = &userResources.multiKey[j];
             }
         } END_THREAD_ZERO
-        kvStore->KVAsyncGetFinalizeD(ticket_arr[(userResources.idx - CONCURRENT_COUNT) % CONCURRENT_COUNT]);
+        kvStore->KVAsyncGetZCFinalizeD(ticket_arr[(userResources.idx - CONCURRENT_COUNT) % CONCURRENT_COUNT]);
 #ifdef CHECK_WRONG_ANSWERS
         for (size_t i = 0; i < NUM_KEYS; i++)
         {
             check_wrong_answer((int*) userResources.arrOfUserMultiBuffer[(userResources.idx - CONCURRENT_COUNT) % CONCURRENT_COUNT].getDevicePtrSingleBuffer(i), userResources.idx - CONCURRENT_COUNT, wrong_answers);
         }
 #endif
-        kvStore->KVAsyncGetInitiateD((void**)userResources.keys, sizeof(int), userResources.arrOfUserMultiBuffer[userResources.idx % CONCURRENT_COUNT], sizeof(int) * DATA_ARR_SIZE, userResources.arrOfUserKVStatusArr[userResources.idx % CONCURRENT_COUNT], NUM_KEYS, &ticket_arr[userResources.idx % CONCURRENT_COUNT]);
+        kvStore->KVAsyncGetZCInitiateD((void**)userResources.keys, sizeof(int), userResources.arrOfUserMultiBuffer[userResources.idx % CONCURRENT_COUNT], sizeof(int) * DATA_ARR_SIZE, userResources.arrOfUserKVStatusArr[userResources.idx % CONCURRENT_COUNT], NUM_KEYS, &ticket_arr[userResources.idx % CONCURRENT_COUNT]);
     }
     
     while (userResources.idx < numIterations + CONCURRENT_COUNT){
         BEGIN_THREAD_ZERO {
             userResources.idx++;
         } END_THREAD_ZERO
-        kvStore->KVAsyncGetFinalizeD(ticket_arr[(userResources.idx - CONCURRENT_COUNT) % CONCURRENT_COUNT]);
+        kvStore->KVAsyncGetZCFinalizeD(ticket_arr[(userResources.idx - CONCURRENT_COUNT) % CONCURRENT_COUNT]);
 #ifdef CHECK_WRONG_ANSWERS
         for (size_t i = 0; i < NUM_KEYS; i++)
         {
@@ -263,7 +263,7 @@ void async_read_kernel_2phase(KeyValueStore *kvStore, UserResources* d_userResou
                 userResources.keys[j] = &userResources.multiKey[j];
             }  
         } END_THREAD_ZERO
-        kvStore->KVAsyncGetInitiateD((void**)userResources.keys, 
+        kvStore->KVAsyncGetZCInitiateD((void**)userResources.keys, 
         sizeof(int), 
         userResources.arrOfUserMultiBuffer[userResources.idx % CONCURRENT_COUNT], 
         sizeof(int) * DATA_ARR_SIZE, 
@@ -280,7 +280,7 @@ void async_read_kernel_2phase(KeyValueStore *kvStore, UserResources* d_userResou
         BEGIN_THREAD_ZERO {
             userResources.idx++;
         } END_THREAD_ZERO
-        kvStore->KVAsyncGetFinalizeD(ticket_arr[(userResources.idx) % CONCURRENT_COUNT]);
+        kvStore->KVAsyncGetZCFinalizeD(ticket_arr[(userResources.idx) % CONCURRENT_COUNT]);
 #ifdef CHECK_WRONG_ANSWERS
         for (size_t i = 0; i < NUM_KEYS; i++)
         {
@@ -549,7 +549,7 @@ void parseArguments(int argc, char* argv[], int &numThreadBlocks, std::string &w
         {"--tb, --thread-blocks <num>", "Specify the number of thread blocks (e.g., --tb 4)"},
         {"--w, --write <host|device>", "Specify write mode as host (h) or device (d) (e.g., --w host)"},
         {"--wk, --write-kernel <sync|async>", "Specify write kernel as sync or async (e.g., --wk sync)"},
-        {"--rk, --read-kernel <sync|async>", "Specify read kernel as sync or async (e.g., --rk sync)"},
+        {"--rk, --read-kernel <sync|async|async-zc>", "Specify read kernel as sync or async (e.g., --rk sync)"},
         {"--help, -h", "Show this help message"}
     };
 
@@ -579,6 +579,8 @@ void parseArguments(int argc, char* argv[], int &numThreadBlocks, std::string &w
                 rKernel = "sync";
             else if (rKernel == "async")
                 rKernel = "async";
+            else if (rKernel == "async-zc")
+                rKernel = "async-zc";
             else{
                 std::cout << "Read kernel unavailable, choose sync or async. Using default value " << rKernel << std::endl;
             }
@@ -697,8 +699,13 @@ int main(int argc, char* argv[]) {
     }
     else if (rKernel == "async"){
         sync_and_measure_time([&]() {
-            async_read_kernel_3phase_new<<<numThreadBlocks, blockSize>>>(kvStore, d_userResources, NUM_ITERATIONS);
-        }, "async_read_kernel_3phase_new", numThreadBlocks);
+            async_read_kernel_3phase<<<numThreadBlocks, blockSize>>>(kvStore, d_userResources, NUM_ITERATIONS);
+        }, "async_read_kernel_3phase", numThreadBlocks);
+    }
+    else if (rKernel == "async-zc"){
+        sync_and_measure_time([&]() {
+            async_read_kernel_3phase_ZC<<<numThreadBlocks, blockSize>>>(kvStore, d_userResources, NUM_ITERATIONS);
+        }, "async_read_kernel_3phase_ZC", numThreadBlocks);
     }
 
     // GPU memory free:

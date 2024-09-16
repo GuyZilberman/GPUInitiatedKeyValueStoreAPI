@@ -30,7 +30,7 @@ def check_for_wrong(log, context):
     return False
 
 def run_all_tests(mode):
-    read_kernels = ["sync", "async"]
+    read_kernels = ["sync", "async", "async-zc"]
     write_kernels = ["sync", "async"]
     write_modes = ["device", "host"]
 

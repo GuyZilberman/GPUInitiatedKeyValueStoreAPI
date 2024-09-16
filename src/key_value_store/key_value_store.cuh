@@ -332,23 +332,26 @@ class KeyValueStore {
         __device__ 
         void KVDeleteD(void* key, unsigned int keySize, KVStatusType KVStatus[]);
         
+        // Async Put
         __device__ 
         void KVAsyncPutInitiateD(void* keys[], unsigned int keySize, void* buffs[], unsigned int buffSize, int numKeys);
 
         __device__
         void KVAsyncPutFinalizeD(KVStatusType KVStatus[], int numKeys);
-        
+
+        // Async Get
         __device__
         void KVAsyncGetInitiateD(void* keys[], const unsigned int keySize, int numKeys);
 
         __device__
         void KVAsyncGetFinalizeD(void* buffs[], const unsigned int buffSize, KVStatusType KVStatus[], int numKeys);
 
+        // Async Get ZC
         __device__
-        void KVAsyncGetInitiateD(void* keys[], const unsigned int keySize, GPUMultiBufferHandle& valMultiBuff, const unsigned int buffSize, GPUMultiBufferHandle& kvStatusMultiBuff, int numKeys, unsigned int *p_ticket);
+        void KVAsyncGetZCInitiateD(void* keys[], const unsigned int keySize, GPUMultiBufferHandle& valMultiBuff, const unsigned int buffSize, GPUMultiBufferHandle& kvStatusMultiBuff, int numKeys, unsigned int *p_ticket);
 
         __device__
-        void KVAsyncGetFinalizeD(unsigned int ticket);
+        void KVAsyncGetZCFinalizeD(unsigned int ticket);
 
         __host__
         void KVMultiPutH(void* keys[], unsigned int keySize, void* buffs[], unsigned int buffSize, KVStatusType KVStatus[], size_t numKeys);
