@@ -196,7 +196,7 @@ public:
     bool push_no_data(ThreadBlockResources* d_tbResources, const int tid, CommandType cmd, const uint request_id, int ticket = 0, int numKeys = 1);
     
     __host__ 
-    void pop(const int currHead, int &currModHead);
+    void pop(const int currHead, KVMemHandle &kvMemHandle, RequestMessage *async_req_msg, ResponseMessage *async_res_msg, DataBank *dataBank, int &currModHead, CommandType &command, int &numKeys);
 
     __host__ 
     bool checkQueueNotEmpty(int &currHead);
@@ -237,7 +237,7 @@ public:
     ~DeviceAllocatedCompletionQueue();
 
     __host__
-    bool push(KeyValueStore *kvStore, KVMemHandle &kvMemHandle, int blockIndex, int currModHead, RequestMessage &async_req_msg, ResponseMessage &async_res_msg, CommandType command, int &numKeys);
+    bool push(KeyValueStore *kvStore, KVMemHandle &kvMemHandle, RequestMessage *async_req_msg, ResponseMessage *async_res_msg, int blockIndex, int currModHead, CommandType command, const int numKeys);
 
     __device__ 
     bool pop_get(ThreadBlockResources* d_tbResources, void* buffs[], int buffSize, const int tid, DataBank* d_databank_p, KVStatusType KVStatus[], int numKeys);
@@ -263,8 +263,6 @@ struct HostSubmissionQueueWithDataBank {
     DataBank dataBank;
 
     HostSubmissionQueueWithDataBank(gdr_mh_t &mh, int queueSize, int maxValueSize, int maxKeySize);
-
-    void pop(const int currHead, KVMemHandle &kvMemHandle, int &currModHead, RequestMessage &async_req_msg, ResponseMessage &async_res_msg, CommandType &command, int &numKeys);
 };
 
 #ifdef IN_MEMORY_STORE
@@ -293,7 +291,7 @@ class KeyValueStore {
 
         void process_async_get(KVMemHandle &kvMemHandle, int blockIndex, ResponseMessage &res_msg, int currModTail, size_t num_keys, void* keys_buffer, RequestMessage* p_req_msg_cpy);
 
-        void process_kv_request(KVMemHandle &kvMemHandle, int blockIndex, ResponseMessage *curr_res_msg_arr, int currTail, RequestMessage &async_req_msg, ResponseMessage &async_res_msg, CommandType command, int& numKeys);
+        void process_kv_request(KVMemHandle &kvMemHandle, int blockIndex, ResponseMessage *curr_res_msg_arr, int currTail, RequestMessage *async_req_msg, ResponseMessage *async_res_msg, CommandType command, const int numKeys);
 
         bool checkParameters(int queueSize, int maxValueSize, int maxNumKeys, int maxKeySize);
 

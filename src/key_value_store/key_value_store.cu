@@ -301,9 +301,46 @@ bool HostAllocatedSubmissionQueue::push_no_data(ThreadBlockResources* d_tbResour
 }
 
 __host__ 
-void HostAllocatedSubmissionQueue::pop(const int currHead, int &currModHead) {
-    currModHead = currHead % this->queueSize;
-    int incrementSize = req_msg_arr[currModHead].numKeys;
+void HostAllocatedSubmissionQueue::pop(const int currHead, KVMemHandle &kvMemHandle, RequestMessage *async_req_msg, ResponseMessage *async_res_msg, DataBank *dataBank, int &currModHead, CommandType &command, int &numKeys){
+    currModHead = currHead % queueSize;
+    command = req_msg_arr[currModHead].cmd;
+    numKeys = req_msg_arr[currModHead].numKeys;
+    int &incrementSize = numKeys;
+    
+    if (command == CommandType::ASYNC_PUT)
+    {
+        size_t num_keys = req_msg_arr[currModHead].numKeys;
+#ifdef STORELIB_LOOPBACK
+        for (int i = 0; i < num_keys; i++)
+            async_res_msg.KVStatus[i] = KVStatusType::SUCCESS;
+
+#elif defined(IN_MEMORY_STORE)
+        tbb::concurrent_hash_map<std::array<unsigned char, MAX_KEY_SIZE>, InMemoryValue, KeyHasher>& inMemoryStoreMap = kvMemHandle.inMemoryStoreMap;
+        tbb::parallel_for(size_t(0), num_keys, [&](size_t i) {
+            putInMemoryStore(req_msg_arr[(currModHead + i) % queueSize],
+            &dataBank->data[(currModHead + i) % queueSize * dataBank->maxValueSize], 
+            inMemoryStoreMap, 
+            async_res_msg->KVStatus[i]);
+        });
+#else
+        PLIOPS_DB_t& plio_handle = kvMemHandle.plio_handle;
+        tbb::parallel_for(size_t(0), num_keys, [&](size_t i) {
+            putInPliopsDB(plio_handle, 
+            req_msg_arr[(currModHead + i) % queueSize],
+            &dataBank->data[(currModHead + i) % queueSize * dataBank->maxValueSize], 
+            async_res_msg->KVStatus[i], 
+            async_res_msg->StorelibStatus[i]);
+        });
+#endif
+    }
+    else if (command == CommandType::ASYNC_GET){
+        async_req_msg->cmd = req_msg_arr[currModHead].cmd;
+        async_req_msg->keySize = req_msg_arr[currModHead].keySize;
+        async_req_msg->numKeys = req_msg_arr[currModHead].numKeys;
+        for (size_t i = 0; i < async_req_msg->numKeys; i++)
+            for (size_t j = 0; j < async_req_msg->keySize; j++)
+                ((unsigned char*)(async_req_msg->key))[j + i * async_req_msg->keySize] = ((unsigned char*)req_msg_arr[(currModHead + i) % queueSize].key)[j];
+    }
     head.store(currHead + incrementSize, cuda::memory_order_release);
 }
 
@@ -386,8 +423,8 @@ DeviceAllocatedCompletionQueue::~DeviceAllocatedCompletionQueue() {
 }
 
 __host__
-bool DeviceAllocatedCompletionQueue::push(KeyValueStore *kvStore, KVMemHandle &kvMemHandle, int blockIndex, int currModHead, RequestMessage &async_req_msg, ResponseMessage &async_res_msg, CommandType command, int &numKeys) {
-    int &incrementSize = numKeys;
+bool DeviceAllocatedCompletionQueue::push(KeyValueStore *kvStore, KVMemHandle &kvMemHandle, RequestMessage *async_req_msg, ResponseMessage *async_res_msg, int blockIndex, int currModHead, CommandType command, const int numKeys) {
+    const int &incrementSize = numKeys;
     int currTail = tail.load(cuda::memory_order_relaxed);
     if (currTail - head.load(cuda::memory_order_acquire) + incrementSize - 1 >= this->queueSize) {
         return false; // Queue full
@@ -462,51 +499,6 @@ DeviceCompletionQueueWithDataBank::DeviceCompletionQueueWithDataBank(gdr_mh_t &m
 HostSubmissionQueueWithDataBank::HostSubmissionQueueWithDataBank(gdr_mh_t &mh, int queueSize, int maxValueSize, int maxKeySize):
         sq(mh, queueSize, maxKeySize),
         dataBank(queueSize, maxValueSize, AllocationType::SHARED_CPU_MEMORY){}
-
-__host__ 
-void HostSubmissionQueueWithDataBank::pop(const int currHead, KVMemHandle &kvMemHandle, int &currModHead, RequestMessage &async_req_msg, ResponseMessage &async_res_msg, CommandType &command, int &numKeys){ // TODO guy change the async messages to pointers instead of reference variables  
-    currModHead = currHead % sq.queueSize;
-    command = sq.req_msg_arr[currModHead].cmd;
-    numKeys = sq.req_msg_arr[currModHead].numKeys;
-    int &incrementSize = numKeys;
-    
-    if (command == CommandType::ASYNC_PUT)
-    {
-        size_t num_keys = sq.req_msg_arr[currModHead].numKeys;
-#ifdef STORELIB_LOOPBACK
-        for (int i = 0; i < num_keys; i++)
-            async_res_msg.KVStatus[i] = KVStatusType::SUCCESS;
-
-#elif defined(IN_MEMORY_STORE)
-        tbb::concurrent_hash_map<std::array<unsigned char, MAX_KEY_SIZE>, InMemoryValue, KeyHasher>& inMemoryStoreMap = kvMemHandle.inMemoryStoreMap;
-        tbb::parallel_for(size_t(0), num_keys, [&](size_t i) {
-            putInMemoryStore(sq.req_msg_arr[(currModHead + i) % sq.queueSize],
-            &dataBank.data[(currModHead + i) % sq.queueSize * dataBank.maxValueSize], 
-            inMemoryStoreMap, 
-            async_res_msg.KVStatus[i]);
-        });
-#else
-        PLIOPS_DB_t& plio_handle = kvMemHandle.plio_handle;
-        tbb::parallel_for(size_t(0), num_keys, [&](size_t i) {
-            putInPliopsDB(plio_handle, 
-            sq.req_msg_arr[(currModHead + i) % sq.queueSize],
-            &dataBank.data[(currModHead + i) % sq.queueSize * dataBank.maxValueSize], 
-            async_res_msg.KVStatus[i], 
-            async_res_msg.StorelibStatus[i]);
-        });
-#endif
-    }
-    else if (command == CommandType::ASYNC_GET){
-        async_req_msg.cmd = sq.req_msg_arr[currModHead].cmd;
-        async_req_msg.keySize = sq.req_msg_arr[currModHead].keySize;
-        async_req_msg.numKeys = sq.req_msg_arr[currModHead].numKeys;
-        for (size_t i = 0; i < async_req_msg.numKeys; i++)
-            for (size_t j = 0; j < async_req_msg.keySize; j++)
-                ((unsigned char*)(async_req_msg.key))[j + i * async_req_msg.keySize] = ((unsigned char*)sq.req_msg_arr[(currModHead + i) % sq.queueSize].key)[j];
-    }
-    sq.head.store(currHead + incrementSize, cuda::memory_order_release);
-}
-
 
 void handle_status(KVStatusType &KVStatus, int StorelibStatus, CommandType cmd, uint request_id, void *key){
     if (StorelibStatus == 5) // Key does not exist
@@ -605,7 +597,7 @@ void KeyValueStore::KVGetBaseD(void* keys[], const unsigned int keySize, void* b
 void KeyValueStore::server_func(KVMemHandle &kvMemHandle, int blockIndex, int maxNumKeys, int maxKeySize) {
     HostAllocatedSubmissionQueue *submission_queue = &h_hostmem_p[blockIndex].sq;
     DeviceAllocatedCompletionQueue *completion_queue = &h_devmem_p[blockIndex].cq;
-    HostSubmissionQueueWithDataBank *submission_queue_with_data_bank = &h_hostmem_p[blockIndex];
+    DataBank* sqDataBank = &h_hostmem_p[blockIndex].dataBank;
 
     // Initialize a request message to be used for asynchronous get requests
     RequestMessage async_req_msg(maxNumKeys, maxKeySize);
@@ -625,9 +617,10 @@ void KeyValueStore::server_func(KVMemHandle &kvMemHandle, int blockIndex, int ma
         submission_queue->serverThreadWaitUntilSignal(lock);
 
         int currModHead;
-        submission_queue_with_data_bank->pop(submission_queue->currHead, kvMemHandle, currModHead, async_req_msg, async_res_msg, command, numKeys);
+        submission_queue->pop(submission_queue->currHead, kvMemHandle, &async_req_msg, &async_res_msg, sqDataBank, currModHead, command, numKeys);
 
-        while (!completion_queue->push(this, kvMemHandle, blockIndex, currModHead, async_req_msg, async_res_msg, command, numKeys)); // Busy-wait until the value is pushed successfully
+        // Busy-wait until the value is pushed successfully
+        while (!completion_queue->push(this, kvMemHandle, &async_req_msg, &async_res_msg, blockIndex, currModHead, command, numKeys));
         submission_queue->isServerThreadActive.store(false, std::memory_order_release);
     }
     delete[] async_res_msg.KVStatus;
@@ -669,7 +662,7 @@ void printMapContents(const tbb::concurrent_hash_map<int, std::shared_future<voi
     }
 }
 
-void KeyValueStore::process_kv_request(KVMemHandle &kvMemHandle, int blockIndex, ResponseMessage *curr_res_msg_arr, int currTail, RequestMessage &async_req_msg, ResponseMessage &async_res_msg, CommandType command, int& numKeys){
+void KeyValueStore::process_kv_request(KVMemHandle &kvMemHandle, int blockIndex, ResponseMessage *curr_res_msg_arr, int currTail, RequestMessage *async_req_msg, ResponseMessage *async_res_msg, CommandType command, const int numKeys){
     int currModTail = currTail % queueSize;
     ResponseMessage &curr_res_msg = curr_res_msg_arr[currModTail];
 #ifndef STORELIB_LOOPBACK
@@ -787,8 +780,8 @@ void KeyValueStore::process_kv_request(KVMemHandle &kvMemHandle, int blockIndex,
     else if (command == CommandType::ASYNC_PUT){
         // Perform a copy of the request message's KVStatus and StorelibStatus array
         for (int i = 0; i < num_keys; i++){
-            curr_res_msg.KVStatus[i] = async_res_msg.KVStatus[i];
-            curr_res_msg.StorelibStatus[i] = async_res_msg.StorelibStatus[i];
+            curr_res_msg.KVStatus[i] = async_res_msg->KVStatus[i];
+            curr_res_msg.StorelibStatus[i] = async_res_msg->StorelibStatus[i];
         }
             
     }
@@ -798,20 +791,20 @@ void KeyValueStore::process_kv_request(KVMemHandle &kvMemHandle, int blockIndex,
             curr_res_msg.KVStatus[i] = KVStatusType::SUCCESS;
 #elif defined(IN_MEMORY_STORE)
         tbb::parallel_for(size_t(0), num_keys, [&](size_t i) {
-            getFromMemoryStore(async_req_msg, 
+            getFromMemoryStore(*async_req_msg, 
             &h_devDataBank_p->data[(currModTail + i) % queueSize * h_devDataBank_p->maxValueSize], 
             inMemoryStoreMap, 
             curr_res_msg.KVStatus[i], 
-            (char*)async_req_msg.key + i * async_req_msg.keySize);
+            (char*)async_req_msg->key + i * async_req_msg->keySize);
         });
 #else
         tbb::parallel_for(size_t(0), num_keys, [&](size_t i) {
             getFromPliopsDB(plio_handle, 
-            async_req_msg, 
+            *async_req_msg, 
             &h_devDataBank_p->data[(currModTail + i) % queueSize * h_devDataBank_p->maxValueSize], 
             curr_res_msg.KVStatus[i], 
             curr_res_msg.StorelibStatus[i], 
-            (char*)async_req_msg.key + i * async_req_msg.keySize,
+            (char*)async_req_msg->key + i * async_req_msg->keySize,
             h_devDataBank_p->maxValueSize);
         });
 #endif
