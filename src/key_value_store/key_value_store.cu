@@ -853,7 +853,7 @@ void KeyValueStore::controller_func(int numThreadBlocks) {
     }
 }
 
-KeyValueStore::KeyValueStore(const int numThreadBlocks, const int blockSize, int maxValueSize, int maxNumKeys, int maxKeySize, KVMemHandle &kvMemHandle) {            
+KeyValueStore::KeyValueStore(const int numThreadBlocks, const int blockSize, int maxValueSize, int maxNumKeys, int maxKeySize) {            
 #ifdef IN_MEMORY_STORE
     maxValueSize = MAX_VALUE_SIZE;
     maxKeySize = MAX_KEY_SIZE;
@@ -950,7 +950,7 @@ KeyValueStore::~KeyValueStore() {
     delete[] ticketToFutureMapArr;
 }
 
-bool KeyValueStore::KVOpenDB(KVMemHandle& kvMemHandle) {
+bool KeyValueStore::KVOpenDB() {
 #if !defined(STORELIB_LOOPBACK) && !defined(IN_MEMORY_STORE)
     PLIOPS_IDENTIFY_t& identify = kvMemHandle.identify;
     PLIOPS_DB_t& plio_handle= kvMemHandle.plio_handle;
@@ -969,7 +969,7 @@ bool KeyValueStore::KVOpenDB(KVMemHandle& kvMemHandle) {
     return true;
 }
 
-bool KeyValueStore::KVCloseDB(KVMemHandle& kvMemHandle) {
+bool KeyValueStore::KVCloseDB() {
 #if !defined(STORELIB_LOOPBACK) && !defined(IN_MEMORY_STORE)
     PLIOPS_DB_t& plio_handle= kvMemHandle.plio_handle;
     int ret = PLIOPS_CloseDB(plio_handle);
@@ -982,7 +982,7 @@ bool KeyValueStore::KVCloseDB(KVMemHandle& kvMemHandle) {
     return true;
 }
 
-bool KeyValueStore::KVDeleteDB(KVMemHandle& kvMemHandle) {
+bool KeyValueStore::KVDeleteDB() {
 #ifndef XDP_ON_HOST
 #if !defined(STORELIB_LOOPBACK) && !defined(IN_MEMORY_STORE)
     PLIOPS_IDENTIFY_t& identify = kvMemHandle.identify;

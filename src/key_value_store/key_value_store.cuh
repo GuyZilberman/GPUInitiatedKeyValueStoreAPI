@@ -275,6 +275,7 @@ void getFromPliopsDB(PLIOPS_DB_t &plio_handle, RequestMessage &req_msg, void *da
 
 class KeyValueStore {
     private:
+        static KVMemHandle kvMemHandle;
         KVMemHandle *pKVMemHandle;
         int queueSize;
         tbb::concurrent_hash_map<int, std::shared_future<void>>* ticketToFutureMapArr;
@@ -305,15 +306,15 @@ class KeyValueStore {
         int numThreadBlocks;
         int blockSize;
 
-        KeyValueStore(const int numThreadBlocks, const int blockSize, int maxValueSize, int maxNumKeys, int maxKeySize, KVMemHandle &kvMemHandle);        
+        KeyValueStore(const int numThreadBlocks, const int blockSize, int maxValueSize, int maxNumKeys, int maxKeySize);        
         
         ~KeyValueStore();
 
-        bool KVOpenDB(KVMemHandle& kvMemHandle);
+        static bool KVOpenDB();
 
-        bool KVCloseDB(KVMemHandle& kvMemHandle);
+        static bool KVCloseDB();
 
-        bool KVDeleteDB(KVMemHandle& kvMemHandle);
+        static bool KVDeleteDB();
 
         __device__ 
         void KVPutD(void* key, unsigned int keySize, void* buff, unsigned int buffSize, KVStatusType &KVStatus);
@@ -358,4 +359,5 @@ class KeyValueStore {
         void KVPutH(void* key, unsigned int keySize, void* buff, unsigned int buffSize, KVStatusType &KVStatus);
 };
 
+KVMemHandle KeyValueStore::kvMemHandle;
 #endif // KEY_VALUE_STORE_H

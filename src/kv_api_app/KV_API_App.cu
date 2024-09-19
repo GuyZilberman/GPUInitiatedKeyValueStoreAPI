@@ -642,14 +642,12 @@ int main(int argc, char* argv[]) {
     printSettings(numThreadBlocks, blockSize, wMode, rKernel, wKernel);
     saveYAMLToFile();
 
-    KVMemHandle kvMemHandle;
-
     // Allocate pinned memory accessible by both CPU and GPU for a KeyValueStore instance.
     // Construct a KeyValueStore object in the allocated memory with specified thread blocks and block size.
     KeyValueStore *kvStore;
     CUDA_ERRCHECK(cudaHostAlloc((void **)&kvStore, sizeof(KeyValueStore), cudaHostAllocMapped));
     try {
-        new (kvStore) KeyValueStore(numThreadBlocks, blockSize, DATA_ARR_SIZE*sizeof(int), NUM_KEYS, sizeof(int), kvMemHandle);
+        new (kvStore) KeyValueStore(numThreadBlocks, blockSize, DATA_ARR_SIZE*sizeof(int), NUM_KEYS, sizeof(int));
     }
     catch (const string& e) {
         std::cerr << e.c_str() << std::endl;
@@ -658,7 +656,7 @@ int main(int argc, char* argv[]) {
     }
 
     // Open the kvStore database with the memory handle, enabling subsequent put and get calls.
-    ERRCHECK(kvStore->KVOpenDB(kvMemHandle));
+    ERRCHECK(KeyValueStore::KVOpenDB());
 
     // Allocate and initialize device memory for UserResources from host, preparing for numThreadBlocks worth of data.
     // The contents of these resources are set by the user and are dependant on the application.
@@ -712,9 +710,9 @@ int main(int argc, char* argv[]) {
     CUDA_ERRCHECK(cudaFree(d_userResources));
 
     delete[] h_userResourcesTemp;
-    ERRCHECK(kvStore->KVCloseDB(kvMemHandle));
+    ERRCHECK(KeyValueStore::KVCloseDB());
 #ifndef XDP_ON_HOST
-    ERRCHECK(kvStore->KVDeleteDB(kvMemHandle));
+    ERRCHECK(KeyValueStore::KVDeleteDB());
 #endif
     kvStore->~KeyValueStore();
     CUDA_ERRCHECK(cudaFreeHost(kvStore));
