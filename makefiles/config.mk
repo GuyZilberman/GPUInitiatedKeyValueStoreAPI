@@ -1,7 +1,8 @@
 # Compiler and linker configuration
 CC = nvcc
 CXX = nvcc
-CFLAGS = -arch=sm_80 -I. ${PLIOPS_CFLAGS} -I${COMMON_DIR} -I${KV_STORE_DIR}
+CUDA_ARCH := $(shell nvidia-smi --query-gpu=compute_cap --format=csv,noheader | head -n 1 | sed 's/\.//')
+CFLAGS = -arch=sm_$(CUDA_ARCH) -I. ${PLIOPS_CFLAGS} -I${COMMON_DIR} -I${KV_STORE_DIR}
 LFLAGS = -L. ${PLIOPS_LFLAGS} -lrt -lpthread -lcuda -lgdrapi -ltbb 
 KV_APP_LIBS = -lkey_value_store
 DEBUG_FLAGS = -G -g

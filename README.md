@@ -61,15 +61,14 @@ Note: The delete operation is currently unsupported in this mode. This functiona
 Allocate pinned memory accessible by both CPU and GPU for a KeyValueStore instance.
 Construct a KeyValueStore object in the allocated memory with specified thread blocks and block size.
 ```cpp
-KVMemHandle kvMemHandle;
 KeyValueStore *kvStore;
 CUDA_ERRCHECK(cudaHostAlloc((void **)&kvStore, sizeof(KeyValueStore), cudaHostAllocMapped));
-new (kvStore) KeyValueStore(numThreadBlocks, blockSize, DATA_ARR_SIZE*sizeof(int), NUM_KEYS, sizeof(int), kvMemHandle);
+new (kvStore) KeyValueStore(numThreadBlocks, blockSize, DATA_ARR_SIZE*sizeof(int), NUM_KEYS, sizeof(int));
 ```
 
 Open the kvStore database with the memory handle, enabling subsequent put and get calls.
 ```cpp
-kvStore->KVOpenDB(kvMemHandle);
+KeyValueStore::KVOpenDB();
 ```
 
 Launch a CUDA kernel. Note numThreadBlocks must be consistent with the one you passed to the KeyValueStore constructor.
@@ -85,12 +84,12 @@ kvStore->KVMultiGetD(keys, sizeof(int), buffs, sizeof(int) * DATA_ARR_SIZE, KVSt
 
 Finally, call KVCloseDB
 ```cpp
-kvStore->KVCloseDB(kvMemHandle);
+KeyValueStore::KVCloseDB();
 ```
 
 You may delete the DB using KVDeleteDB (Not yet supported on XDP on-host)
 ```cpp
-kvStore->KVDeleteDB(kvMemHandle);
+KeyValueStore::KVDeleteDB();
 ```
 
 
