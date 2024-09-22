@@ -15,8 +15,10 @@
 #ifndef VALUE_SIZE
 #define VALUE_SIZE 4096
 #endif
-#define DATA_ARR_SIZE (VALUE_SIZE / sizeof(int))
+#ifndef NUM_ITERATIONS
 #define NUM_ITERATIONS 500
+#endif
+#define DATA_ARR_SIZE (VALUE_SIZE / sizeof(int))
 #define DEFAULT_NUM_THREAD_BLOCKS 70
 #define DEFAULT_W_MODE "d"
 #define DEFAULT_R_KERNEL "sync"
@@ -108,10 +110,8 @@ void InitData(UserResources* d_userResources){
 }
 
 __device__
-void check_wrong_answer(int* actual_answer_buf, int expected_answer, int &wrong_answers) {
-    const int tid = threadIdx.z * blockDim.y * blockDim.x 
-        + threadIdx.y * blockDim.x 
-        + threadIdx.x;
+void T0_check_wrong_answer(int* actual_answer_buf, int expected_answer, int &wrong_answers) {
+    const int tid = THREAD_ID;
     BEGIN_THREAD_ZERO {
         if (actual_answer_buf[0] != expected_answer){
             wrong_answers++;
@@ -125,9 +125,54 @@ void check_wrong_answer(int* actual_answer_buf, int expected_answer, int &wrong_
     } END_THREAD_ZERO
 }
 
+__device__
+inline void T0_writeKernelIOInit(UserResources &userResources, const int blockIndex, const int numIterations){
+    const int tid = THREAD_ID;
+    BEGIN_THREAD_ZERO {
+        userResources.idx++;
+        for (int j = 0; j < NUM_KEYS; j++) {
+            userResources.dataBuffers[j][0] = userResources.idx;
+            userResources.buffs[j] = userResources.dataBuffers[j];
+            userResources.multiKey[j] = userResources.idx + 
+                    blockIndex * numIterations +
+                    j * gridDim.x * numIterations;
+            userResources.keys[j] = &userResources.multiKey[j];
+        }
+    } END_THREAD_ZERO
+}
+
+__device__
+inline void T0_readKernelIOInit(UserResources &userResources, const int blockIndex, const int numIterations){
+    const int tid = THREAD_ID;
+    BEGIN_THREAD_ZERO {
+        userResources.idx++;
+        for (int j = 0; j < NUM_KEYS; j++) {
+            userResources.multiKey[j] = userResources.idx + 
+                    blockIndex * numIterations +
+                    j * gridDim.x * numIterations;
+            userResources.keys[j] = &userResources.multiKey[j];
+            userResources.buffs[j] = userResources.dataBuffers[j];
+        }  
+    } END_THREAD_ZERO
+}
+
+__device__
+inline void T0_ZCReadKernelIOInit(UserResources &userResources, const int blockIndex, const int numIterations){
+    const int tid = THREAD_ID;
+    BEGIN_THREAD_ZERO {
+        userResources.idx++;
+        for (int j = 0; j < NUM_KEYS; j++) {
+            userResources.multiKey[j] = userResources.idx + 
+                    blockIndex * numIterations +
+                    j * gridDim.x * numIterations;
+            userResources.keys[j] = &userResources.multiKey[j];
+        }  
+    } END_THREAD_ZERO
+}
+
 __global__
 void async_read_kernel_3phase(KeyValueStore *kvStore, UserResources* d_userResources, const int numIterations) {    
-    int blockIndex = blockIdx.x;
+    const int blockIndex = blockIdx.x;
     const int tid = THREAD_ID;
                     
     UserResources &userResources = d_userResources[blockIndex];
@@ -136,38 +181,20 @@ void async_read_kernel_3phase(KeyValueStore *kvStore, UserResources* d_userResou
 #endif
 
     while (userResources.idx < CONCURRENT_COUNT){
-        BEGIN_THREAD_ZERO {
-            userResources.idx++;
-            for (int j = 0; j < NUM_KEYS; j++) {
-                userResources.multiKey[j] = userResources.idx + 
-                        blockIndex * numIterations +
-                        j * gridDim.x * numIterations;
-                userResources.keys[j] = &userResources.multiKey[j];
-                userResources.buffs[j] = userResources.dataBuffers[j];
-            }  
-        } END_THREAD_ZERO
+        T0_readKernelIOInit(userResources, blockIndex, numIterations);
         kvStore->KVAsyncGetInitiateD((void**)userResources.keys, sizeof(int), NUM_KEYS);
     }
     
     while (userResources.idx < numIterations){
-        BEGIN_THREAD_ZERO {
-            userResources.idx++;
-            for (int j = 0; j < NUM_KEYS; j++) {
-                userResources.multiKey[j] = userResources.idx + 
-                        blockIndex * numIterations +
-                        j * gridDim.x * numIterations;
-                userResources.keys[j] = &userResources.multiKey[j];
-                userResources.buffs[j] = userResources.dataBuffers[j];
-            }
-        } END_THREAD_ZERO
+        T0_readKernelIOInit(userResources, blockIndex, numIterations);
         kvStore->KVAsyncGetFinalizeD((void**)userResources.buffs, sizeof(int) * DATA_ARR_SIZE, userResources.KVStatus, NUM_KEYS);
 #ifdef CHECK_WRONG_ANSWERS
         for (size_t i = 0; i < NUM_KEYS; i++)
         {
-            check_wrong_answer((int*) userResources.buffs[i], userResources.idx - CONCURRENT_COUNT, wrong_answers);
+            T0_check_wrong_answer((int*) userResources.buffs[i], userResources.idx - CONCURRENT_COUNT, wrong_answers);
         }
 #endif
-    kvStore->KVAsyncGetInitiateD((void**)userResources.keys, sizeof(int), NUM_KEYS);
+        kvStore->KVAsyncGetInitiateD((void**)userResources.keys, sizeof(int), NUM_KEYS);
     }
     
     while (userResources.idx < numIterations + CONCURRENT_COUNT){
@@ -178,7 +205,7 @@ void async_read_kernel_3phase(KeyValueStore *kvStore, UserResources* d_userResou
 #ifdef CHECK_WRONG_ANSWERS
         for (size_t i = 0; i < NUM_KEYS; i++)
         {
-            check_wrong_answer((int*) userResources.buffs[i], userResources.idx - CONCURRENT_COUNT, wrong_answers);
+            T0_check_wrong_answer((int*) userResources.buffs[i], userResources.idx - CONCURRENT_COUNT, wrong_answers);
         }
 #endif
     }
@@ -196,33 +223,17 @@ void async_read_kernel_3phase_ZC(KeyValueStore *kvStore, UserResources* d_userRe
     unsigned int ticket_arr[CONCURRENT_COUNT];
 
     while (userResources.idx < CONCURRENT_COUNT){
-        BEGIN_THREAD_ZERO {
-            userResources.idx++;
-            for (int j = 0; j < NUM_KEYS; j++) {
-                userResources.multiKey[j] = userResources.idx + 
-                        blockIndex * numIterations +
-                        j * gridDim.x * numIterations;
-                userResources.keys[j] = &userResources.multiKey[j];
-            }  
-        } END_THREAD_ZERO
+        T0_ZCReadKernelIOInit(userResources, blockIndex, numIterations);
         kvStore->KVAsyncGetZCInitiateD((void**)userResources.keys, sizeof(int), userResources.arrOfUserMultiBuffer[userResources.idx % CONCURRENT_COUNT], sizeof(int) * DATA_ARR_SIZE, userResources.arrOfUserKVStatusArr[userResources.idx % CONCURRENT_COUNT], NUM_KEYS, &ticket_arr[userResources.idx % CONCURRENT_COUNT]);
     }
     
     while (userResources.idx < numIterations){
-        BEGIN_THREAD_ZERO {
-            userResources.idx++;
-            for (int j = 0; j < NUM_KEYS; j++) {
-                userResources.multiKey[j] = userResources.idx + 
-                        blockIndex * numIterations +
-                        j * gridDim.x * numIterations;
-                userResources.keys[j] = &userResources.multiKey[j];
-            }
-        } END_THREAD_ZERO
+        T0_ZCReadKernelIOInit(userResources, blockIndex, numIterations);
         kvStore->KVAsyncGetZCFinalizeD(ticket_arr[(userResources.idx - CONCURRENT_COUNT) % CONCURRENT_COUNT]);
 #ifdef CHECK_WRONG_ANSWERS
         for (size_t i = 0; i < NUM_KEYS; i++)
         {
-            check_wrong_answer((int*) userResources.arrOfUserMultiBuffer[(userResources.idx - CONCURRENT_COUNT) % CONCURRENT_COUNT].getDevicePtrSingleBuffer(i), userResources.idx - CONCURRENT_COUNT, wrong_answers);
+            T0_check_wrong_answer((int*) userResources.arrOfUserMultiBuffer[(userResources.idx - CONCURRENT_COUNT) % CONCURRENT_COUNT].getDevicePtrSingleBuffer(i), userResources.idx - CONCURRENT_COUNT, wrong_answers);
         }
 #endif
         kvStore->KVAsyncGetZCInitiateD((void**)userResources.keys, sizeof(int), userResources.arrOfUserMultiBuffer[userResources.idx % CONCURRENT_COUNT], sizeof(int) * DATA_ARR_SIZE, userResources.arrOfUserKVStatusArr[userResources.idx % CONCURRENT_COUNT], NUM_KEYS, &ticket_arr[userResources.idx % CONCURRENT_COUNT]);
@@ -236,14 +247,14 @@ void async_read_kernel_3phase_ZC(KeyValueStore *kvStore, UserResources* d_userRe
 #ifdef CHECK_WRONG_ANSWERS
         for (size_t i = 0; i < NUM_KEYS; i++)
         {
-            check_wrong_answer((int*) userResources.arrOfUserMultiBuffer[(userResources.idx - CONCURRENT_COUNT) % CONCURRENT_COUNT].getDevicePtrSingleBuffer(i), userResources.idx - CONCURRENT_COUNT, wrong_answers);
+            T0_check_wrong_answer((int*) userResources.arrOfUserMultiBuffer[(userResources.idx - CONCURRENT_COUNT) % CONCURRENT_COUNT].getDevicePtrSingleBuffer(i), userResources.idx - CONCURRENT_COUNT, wrong_answers);
         }
 #endif
     }
 }
 
 __global__
-void async_read_kernel_2phase(KeyValueStore *kvStore, UserResources* d_userResources, const int numIterations) {    
+void async_read_kernel_2phase_ZC(KeyValueStore *kvStore, UserResources* d_userResources, const int numIterations) {    
     int blockIndex = blockIdx.x;
     const int tid = THREAD_ID;
                     
@@ -254,15 +265,7 @@ void async_read_kernel_2phase(KeyValueStore *kvStore, UserResources* d_userResou
     unsigned int ticket_arr[CONCURRENT_COUNT];
 
     while (userResources.idx < CONCURRENT_COUNT){
-        BEGIN_THREAD_ZERO {
-            userResources.idx++;
-            for (int j = 0; j < NUM_KEYS; j++) {
-                userResources.multiKey[j] = userResources.idx + 
-                        blockIndex * numIterations +
-                        j * gridDim.x * numIterations;
-                userResources.keys[j] = &userResources.multiKey[j];
-            }  
-        } END_THREAD_ZERO
+        T0_ZCReadKernelIOInit(userResources, blockIndex, numIterations);
         kvStore->KVAsyncGetZCInitiateD((void**)userResources.keys, 
         sizeof(int), 
         userResources.arrOfUserMultiBuffer[userResources.idx % CONCURRENT_COUNT], 
@@ -284,7 +287,7 @@ void async_read_kernel_2phase(KeyValueStore *kvStore, UserResources* d_userResou
 #ifdef CHECK_WRONG_ANSWERS
         for (size_t i = 0; i < NUM_KEYS; i++)
         {
-            check_wrong_answer((int*) userResources.arrOfUserMultiBuffer[(userResources.idx) % CONCURRENT_COUNT].getDevicePtrSingleBuffer(i), userResources.idx, wrong_answers);
+            T0_check_wrong_answer((int*) userResources.arrOfUserMultiBuffer[(userResources.idx) % CONCURRENT_COUNT].getDevicePtrSingleBuffer(i), userResources.idx, wrong_answers);
         }
 #endif
     }
@@ -302,22 +305,12 @@ void read_kernel(KeyValueStore *kvStore, UserResources* d_userResources, const i
 
     // Send multiget requests after multiput requests
     while (userResources.idx < numIterations){
-        BEGIN_THREAD_ZERO {
-            userResources.idx++;
-            for (int i = 0; i < NUM_KEYS; i++) {
-                userResources.multiKey[i] = userResources.idx + 
-                        blockIndex * numIterations +
-                        i * gridDim.x * numIterations;
-                userResources.keys[i] = &userResources.multiKey[i];
-                userResources.buffs[i] = userResources.dataBuffers[i];
-            }  
-        } END_THREAD_ZERO
-
+        T0_readKernelIOInit(userResources, blockIndex, numIterations);
         kvStore->KVMultiGetD((void**)userResources.keys, sizeof(int), (void**)userResources.buffs, sizeof(int) * DATA_ARR_SIZE, userResources.KVStatus, NUM_KEYS);
 #ifdef CHECK_WRONG_ANSWERS
         for (size_t i = 0; i < NUM_KEYS; i++)
         {
-            check_wrong_answer((int*) userResources.buffs[i], userResources.idx, wrong_answers);
+            T0_check_wrong_answer((int*) userResources.buffs[i], userResources.idx, wrong_answers);
         }
 #endif
     }
@@ -332,33 +325,13 @@ void async_write_kernel_3phase(KeyValueStore *kvStore, UserResources* d_userReso
     UserResources &userResources = d_userResources[blockIndex];
 
     while (userResources.idx < CONCURRENT_COUNT){
-        BEGIN_THREAD_ZERO {
-            userResources.idx++;
-            for (int j = 0; j < NUM_KEYS; j++) {
-                userResources.dataBuffers[j][0] = userResources.idx;
-                userResources.buffs[j] = userResources.dataBuffers[j];
-                userResources.multiKey[j] = userResources.idx + 
-                        blockIndex * numIterations +
-                        j * gridDim.x * numIterations;
-                userResources.keys[j] = &userResources.multiKey[j];
-            }  
-        } END_THREAD_ZERO
+        T0_writeKernelIOInit(userResources, blockIndex, numIterations);
         kvStore->KVAsyncPutInitiateD((void**)userResources.keys, sizeof(int), (void**)userResources.buffs, sizeof(int) * DATA_ARR_SIZE, NUM_KEYS);
     }
     
         
     while (userResources.idx < numIterations){
-        BEGIN_THREAD_ZERO {
-            userResources.idx++;
-            for (int j = 0; j < NUM_KEYS; j++) {
-                userResources.dataBuffers[j][0] = userResources.idx;
-                userResources.buffs[j] = userResources.dataBuffers[j];
-                userResources.multiKey[j] = userResources.idx + 
-                        blockIndex * numIterations +
-                        j * gridDim.x * numIterations;
-                userResources.keys[j] = &userResources.multiKey[j];
-            }
-        } END_THREAD_ZERO
+        T0_writeKernelIOInit(userResources, blockIndex, numIterations);
         kvStore->KVAsyncPutFinalizeD(userResources.KVStatus, NUM_KEYS);
         kvStore->KVAsyncPutInitiateD((void**)userResources.keys, sizeof(int), (void**)userResources.buffs, sizeof(int) * DATA_ARR_SIZE, NUM_KEYS);
     }
@@ -392,8 +365,6 @@ void write_kernel(KeyValueStore *kvStore, UserResources* d_userResources, const 
         } END_THREAD_ZERO
 
         kvStore->KVMultiPutD((void**)userResources.keys, sizeof(int), (void**)userResources.buffs, sizeof(int) * DATA_ARR_SIZE, userResources.KVStatus, NUM_KEYS);
-    }
-    BEGIN_THREAD_ZERO {
     }
 }
 

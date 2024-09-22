@@ -46,3 +46,7 @@ endif
 ifdef NUM_KEYS
     CFLAGS += -DNUM_KEYS=$(NUM_KEYS)
 endif
+
+ifdef NUM_ITERATIONS
+    CFLAGS += -DNUM_ITERATIONS=$(NUM_ITERATIONS)
+endif
