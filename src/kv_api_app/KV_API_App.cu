@@ -7,6 +7,7 @@
 #include <curand_kernel.h>
 #include <algorithm>
 #include <fstream>
+#include <unordered_map>
 
 // Customizable definitions
 #ifndef NUM_KEYS
@@ -18,6 +19,8 @@
 #ifndef NUM_ITERATIONS
 #define NUM_ITERATIONS 500
 #endif
+
+// Default values
 #define DATA_ARR_SIZE (VALUE_SIZE / sizeof(int))
 #define DEFAULT_NUM_THREAD_BLOCKS 70
 #define DEFAULT_W_MODE "d"
@@ -295,9 +298,7 @@ void async_read_kernel_2phase_ZC(KeyValueStore *kvStore, UserResources* d_userRe
 
 __global__
 void read_kernel(KeyValueStore *kvStore, UserResources* d_userResources, const int numIterations) {    
-    int blockIndex = blockIdx.x;
-    const int tid = THREAD_ID;
-                    
+    int blockIndex = blockIdx.x;               
     UserResources &userResources = d_userResources[blockIndex];
 #ifdef CHECK_WRONG_ANSWERS
     int wrong_answers = 0;
@@ -368,36 +369,61 @@ void write_kernel(KeyValueStore *kvStore, UserResources* d_userResources, const 
     }
 }
 
-void checkCPUCoreAvailability(int numThreadBlocks) {
-    const int numCPUCores = sysconf(_SC_NPROCESSORS_ONLN);
 
-    if (numCPUCores < numThreadBlocks) {
-        std::cerr << "Error: CPU does not have the required number of cores." << std::endl
-                  << "Available CPU cores: " << numCPUCores << std::endl
-                  << "Required CPU cores: " << numThreadBlocks << std::endl;
-        exit(EXIT_FAILURE);
+// A map to associate kernel function pointers with their names
+std::map<std::string, void(*)()> kernelFunctionMap = {
+    {"write_kernel", (void(*)())write_kernel},
+    {"async_write_kernel_3phase", (void(*)())async_write_kernel_3phase},
+    {"read_kernel", (void(*)())read_kernel},
+    {"async_read_kernel_2phase_ZC", (void(*)())async_read_kernel_2phase_ZC},
+    {"async_read_kernel_3phase_ZC", (void(*)())async_read_kernel_3phase_ZC},
+    {"async_read_kernel_3phase", (void(*)())async_read_kernel_3phase}
+};
+
+// Function to return the name of the kernel function
+template<typename KernelFunc>
+std::string getKernelFunctionName(KernelFunc func) {
+    for (const auto& pair : kernelFunctionMap) {
+        if (pair.second == (void(*)())func) {
+            return pair.first; // Return the name of the kernel function
+        }
     }
+    return "Kernel function not found"; // Return a default message if not found
 }
 
-template<typename Func>
-void sync_and_measure_time(Func&& func, const std::string& funcName, int numThreadBlocks) {
+template<typename KernelFunc, typename... Args>
+void launch_kernel_sync_and_measure_time(KernelFunc kernel, dim3 gridDim, dim3 blockDim, Args&&... args) {
     std::cout << "---------------------------------------" << std::endl;
+    const std::string funcName = getKernelFunctionName(kernel);
+
+    cudaFuncAttributes attr;
+    cudaError_t err = cudaFuncGetAttributes(&attr, kernel);
+    if (err != cudaSuccess)
+        printf("Failed to retrieve attributes for %s: %s\n", funcName.c_str(), cudaGetErrorString(err));
+    std::cout << "Kernel attributes for " << funcName << ":" << std::endl;
+    std::cout << "  Registers per thread: " << attr.numRegs << std::endl;
+
     std::cout << "Starting kernel run (" << funcName << ")..." << std::endl;
     auto start = std::chrono::high_resolution_clock::now();
-    // Execute the passed function (kernel launch)
-    func();
+
+    // Launch the kernel
+    kernel<<<gridDim, blockDim>>>(std::forward<Args>(args)...);
+    err = cudaGetLastError();
+    if (err != cudaSuccess) {
+        printf("Kernel launch failed for %s: %s\n", funcName.c_str(), cudaGetErrorString(err));
+    }
 
     CUDA_ERRCHECK(cudaDeviceSynchronize());
     auto stop = std::chrono::high_resolution_clock::now();
 
     auto duration = std::chrono::duration_cast<std::chrono::duration<double>>(stop - start).count();
    
-    uint64_t ios = numThreadBlocks * NUM_KEYS * NUM_ITERATIONS;
+    uint64_t ios = gridDim.x * NUM_KEYS * NUM_ITERATIONS;
     uint64_t data = ios * VALUE_SIZE;
     double bandwidth = (((double)data)/duration)/(1000ULL*1000ULL*1000ULL);
     double iops = ((double)ios)/duration;
- 
-    std::cout << std::dec << "Elapsed Time (second): " << std::fixed << std::setprecision(2) << duration << std::endl;
+
+    std::cout << "Elapsed Time (second): " << duration << std::endl;
     std::cout << "Effective Bandwidth (GB/s): " << bandwidth << std::endl;
     std::cout << "IOPS: " << iops << std::endl;
     std::cout << "---------------------------------------" << std::endl;
@@ -646,14 +672,12 @@ int main(int argc, char* argv[]) {
 
         if (wKernel == "sync"){
             printf("wKernel: %s\n", wKernel.c_str());
-            sync_and_measure_time([&]() {
-                write_kernel<<<numThreadBlocks, blockSize>>>(kvStore, d_userResources, NUM_ITERATIONS);
-            }, "write_kernel", numThreadBlocks);
+            launch_kernel_sync_and_measure_time(write_kernel, dim3(numThreadBlocks), dim3(blockSize), 
+            kvStore, d_userResources, NUM_ITERATIONS);
         }
         else if (wKernel == "async"){
-            sync_and_measure_time([&]() {
-                async_write_kernel_3phase<<<numThreadBlocks, blockSize>>>(kvStore, d_userResources, NUM_ITERATIONS);
-            }, "async_write_kernel_3phase", numThreadBlocks);
+            launch_kernel_sync_and_measure_time(async_write_kernel_3phase, dim3(numThreadBlocks), dim3(blockSize), 
+            kvStore, d_userResources, NUM_ITERATIONS);
         }        
     }
 
@@ -662,19 +686,16 @@ int main(int argc, char* argv[]) {
     CUDA_ERRCHECK(cudaDeviceSynchronize());
 
     if (rKernel == "sync"){
-        sync_and_measure_time([&]() {
-            read_kernel<<<numThreadBlocks, blockSize>>>(kvStore, d_userResources, NUM_ITERATIONS);
-        }, "read_kernel", numThreadBlocks);
+        launch_kernel_sync_and_measure_time(read_kernel, dim3(numThreadBlocks), dim3(blockSize), 
+        kvStore, d_userResources, NUM_ITERATIONS);
     }
     else if (rKernel == "async"){
-        sync_and_measure_time([&]() {
-            async_read_kernel_3phase<<<numThreadBlocks, blockSize>>>(kvStore, d_userResources, NUM_ITERATIONS);
-        }, "async_read_kernel_3phase", numThreadBlocks);
+        launch_kernel_sync_and_measure_time(async_read_kernel_3phase, dim3(numThreadBlocks), dim3(blockSize), 
+        kvStore, d_userResources, NUM_ITERATIONS);
     }
     else if (rKernel == "async-zc"){
-        sync_and_measure_time([&]() {
-            async_read_kernel_3phase_ZC<<<numThreadBlocks, blockSize>>>(kvStore, d_userResources, NUM_ITERATIONS);
-        }, "async_read_kernel_3phase_ZC", numThreadBlocks);
+        launch_kernel_sync_and_measure_time(async_read_kernel_3phase_ZC, dim3(numThreadBlocks), dim3(blockSize), 
+        kvStore, d_userResources, NUM_ITERATIONS);
     }
 
     // GPU memory free:

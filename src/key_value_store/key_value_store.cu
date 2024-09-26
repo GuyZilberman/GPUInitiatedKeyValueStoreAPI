@@ -480,9 +480,8 @@ bool DeviceAllocatedCompletionQueue::pop_async_get_init(ThreadBlockResources* d_
     if (getHeadAndCheckEmpty(d_tbResources, tid))
         return false; 
 
-    *p_ticket = d_tbResources->currTail;
-
     BEGIN_THREAD_ZERO {
+        *p_ticket = d_tbResources->currTail;
         incrementHead(d_tbResources, numKeys);
     } END_THREAD_ZERO
     return true;
