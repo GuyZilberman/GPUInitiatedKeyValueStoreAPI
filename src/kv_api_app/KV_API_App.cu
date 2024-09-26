@@ -555,7 +555,7 @@ void parseArguments(int argc, char* argv[], int &numThreadBlocks, std::string &w
         {"--tb, --thread-blocks <num>", "Specify the number of thread blocks (e.g., --tb 4)"},
         {"--w, --write <host|device>", "Specify write mode as host (h) or device (d) (e.g., --w host)"},
         {"--wk, --write-kernel <sync|async>", "Specify write kernel as sync or async (e.g., --wk sync)"},
-        {"--rk, --read-kernel <sync|async|async-zc>", "Specify read kernel as sync or async (e.g., --rk sync)"},
+        {"--rk, --read-kernel <sync|async|async-zc>", "Specify read kernel as sync, async, or async-zc (e.g., --rk sync)"},
         {"--help, -h", "Show this help message"}
     };
 
@@ -608,6 +608,14 @@ void parseArguments(int argc, char* argv[], int &numThreadBlocks, std::string &w
             }
         }
 
+    }
+
+    // Check if CONCURRENT_COUNT <= NUM_ITERATIONS when using async kernels
+    if (((rKernel == "async" || rKernel == "async-zc") || wKernel == "async") && CONCURRENT_COUNT > NUM_ITERATIONS) {
+        std::cerr << "Error: CONCURRENT_COUNT (" << CONCURRENT_COUNT 
+                  << ") must be less than or equal to NUM_ITERATIONS (" << NUM_ITERATIONS 
+                  << ") when using async kernels." << std::endl;
+        exit(1); // Exit with an error code
     }
 }
 
