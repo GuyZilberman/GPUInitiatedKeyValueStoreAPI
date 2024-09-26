@@ -1,5 +1,4 @@
 import subprocess
-import pandas as pd
 import numpy as np
 import time
 import os
@@ -14,8 +13,10 @@ SLEEP_TIME = 10
 parser = argparse.ArgumentParser(description='Run performance tests with different configurations.')
 parser.add_argument('--mode', type=str, choices=['XDP', 'IN_MEMORY_STORE', 'STORELIB_LOOPBACK'], required=True,
                     help='Mode to run the tests in. Choose from XDP, IN_MEMORY_STORE, or STORELIB_LOOPBACK.')
-parser.add_argument('--rk', type=str, choices=['sync', 'async'], required=True,
-                    help='Read kernel mode to run the tests in. Choose from sync or async.')
+parser.add_argument('--rk', type=str, choices=['sync', 'async', 'async-zc'], required=True,
+                    help='Read kernel mode to run the tests in. Choose from sync, async, or async-zc.')
+parser.add_argument('--wk', type=str, choices=['sync', 'async'], required=True,
+                    help='Write kernel mode to run the tests in. Choose from sync or async.')
 
 args = parser.parse_args()
 
@@ -23,15 +24,15 @@ args = parser.parse_args()
 USE_IN_MEMORY_STORE = args.mode == 'IN_MEMORY_STORE'
 USE_STORELIB_LOOPBACK = args.mode == 'STORELIB_LOOPBACK'
 
-# Extract the rk argument
+# Extract the r/w kernel modes
 rk_mode = args.rk
+wk_mode = args.wk
 
 # Define the range of VALUE_SIZEs and thread blocks
-value_sizes = [512]
-thread_blocks = [1]
+value_sizes = [4096]
+thread_blocks = [1, 2, 4, 8, 16, 32, 64, 72, 80]
 NUM_KEYS = 512
 NUM_RUNS_PER_TB_SIZE = 3
-
 
 # This function will run a command and return its output
 def run_command(command, print_output=False):
@@ -63,7 +64,7 @@ def directory_name():
     XDP_header_path = "/etc/pliops/store_lib_expo.h"
     XDP_on_host_header_path = "/etc/opt/pliops/xdp-onhost/store_lib_expo.h"
     current_time = datetime.now().strftime("%Y_%m_%d__%H_%M_%S")
-    dir_name = f"results_keys_{NUM_KEYS}_{current_time}_{rk_mode.upper()}"
+    dir_name = f"results_keys_{NUM_KEYS}_{current_time}_rk-{rk_mode.upper()}_wk-{wk_mode.upper()}"
     if USE_IN_MEMORY_STORE:
         dir_name += "_IN_MEMORY_STORE"
     elif USE_STORELIB_LOOPBACK:
@@ -129,7 +130,7 @@ for size in value_sizes:
         
         # Run kvapp several times
         for _ in range(NUM_RUNS_PER_TB_SIZE):
-            command = f"sudo -E ./kvapp --tb {tb} --rk {rk_mode}"
+            command = f"sudo -E ./kvapp --tb {tb} --rk {rk_mode} --wk {wk_mode}"
             run_command(command)
 
             # Load the results from YAML file
@@ -139,8 +140,21 @@ for size in value_sizes:
                 save_metadata(yaml_data, metadata_file)
                 first_run = False
 
-            write_results = yaml_data.get('write_kernel', {})
-            read_results = yaml_data.get('read_kernel', {}) if rk_mode == 'sync' else yaml_data.get('async_read_kernel_3phase', {})
+            write_results = yaml_data.get(f'write_kernel_{wk_mode}', {})
+            
+            # Handle wk mode results
+            if wk_mode == 'sync':
+                write_results = yaml_data.get('read_kernel', {})
+            elif wk_mode == 'async':
+                write_results = yaml_data.get('async_write_kernel_3phase', {})
+
+            # Handle rk mode results
+            if rk_mode == 'sync':
+                read_results = yaml_data.get('read_kernel', {})
+            elif rk_mode == 'async':
+                read_results = yaml_data.get('async_read_kernel_3phase', {})
+            elif rk_mode == 'async-zc':
+                read_results = yaml_data.get('async_read_kernel_3phase_ZC', {})
 
             # Extract and store necessary output from the YAML data
             write_times.append(float(write_results.get('elapsed_time [s]', 0)))
