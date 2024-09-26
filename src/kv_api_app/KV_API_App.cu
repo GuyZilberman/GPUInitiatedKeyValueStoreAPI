@@ -9,6 +9,10 @@
 #include <fstream>
 #include <unordered_map>
 
+// Launch Bounds
+#define NUM_THREADS_PER_THREAD_BLOCK 512
+#define MIN_THREAD_BLOCKS_PER_SM 1
+
 // Customizable definitions
 #ifndef NUM_KEYS
 #define NUM_KEYS 512
@@ -26,7 +30,6 @@
 #define DEFAULT_W_MODE "d"
 #define DEFAULT_R_KERNEL "sync"
 #define DEFAULT_W_KERNEL "sync"
-#define NUM_THREADS_PER_THREAD_BLOCK 512
 #define CONCURRENT_COUNT 10
 
 // Constant definitions
@@ -173,6 +176,7 @@ inline void T0_ZCReadKernelIOInit(UserResources &userResources, const int blockI
     } END_THREAD_ZERO
 }
 
+__launch_bounds__(NUM_THREADS_PER_THREAD_BLOCK, MIN_THREAD_BLOCKS_PER_SM)
 __global__
 void async_read_kernel_3phase(KeyValueStore *kvStore, UserResources* d_userResources, const int numIterations) {    
     const int blockIndex = blockIdx.x;
@@ -214,6 +218,7 @@ void async_read_kernel_3phase(KeyValueStore *kvStore, UserResources* d_userResou
     }
 }
 
+__launch_bounds__(NUM_THREADS_PER_THREAD_BLOCK, MIN_THREAD_BLOCKS_PER_SM)
 __global__
 void async_read_kernel_3phase_ZC(KeyValueStore *kvStore, UserResources* d_userResources, const int numIterations) {    
     int blockIndex = blockIdx.x;
@@ -256,6 +261,7 @@ void async_read_kernel_3phase_ZC(KeyValueStore *kvStore, UserResources* d_userRe
     }
 }
 
+__launch_bounds__(NUM_THREADS_PER_THREAD_BLOCK, MIN_THREAD_BLOCKS_PER_SM)
 __global__
 void async_read_kernel_2phase_ZC(KeyValueStore *kvStore, UserResources* d_userResources, const int numIterations) {    
     int blockIndex = blockIdx.x;
@@ -296,6 +302,7 @@ void async_read_kernel_2phase_ZC(KeyValueStore *kvStore, UserResources* d_userRe
     }
 }
 
+__launch_bounds__(NUM_THREADS_PER_THREAD_BLOCK, MIN_THREAD_BLOCKS_PER_SM)
 __global__
 void read_kernel(KeyValueStore *kvStore, UserResources* d_userResources, const int numIterations) {    
     int blockIndex = blockIdx.x;               
@@ -318,6 +325,7 @@ void read_kernel(KeyValueStore *kvStore, UserResources* d_userResources, const i
 
 }
 
+__launch_bounds__(NUM_THREADS_PER_THREAD_BLOCK, MIN_THREAD_BLOCKS_PER_SM)
 __global__
 void async_write_kernel_3phase(KeyValueStore *kvStore, UserResources* d_userResources, const int numIterations) {    
     int blockIndex = blockIdx.x;
@@ -345,6 +353,7 @@ void async_write_kernel_3phase(KeyValueStore *kvStore, UserResources* d_userReso
     }
 }
 
+__launch_bounds__(NUM_THREADS_PER_THREAD_BLOCK, MIN_THREAD_BLOCKS_PER_SM)
 __global__
 void write_kernel(KeyValueStore *kvStore, UserResources* d_userResources, const int numIterations) {    
     int blockIndex = blockIdx.x;
