@@ -31,23 +31,23 @@ def check_for_wrong(log, context):
 
 def run_all_tests(mode):
     read_kernels = ["sync", "async", "async-zc"]
-    write_kernels = ["sync", "async"]
+    write_kernels = ["sync", "async"]  # For device writes
     write_modes = ["device", "host"]
 
     for read_kernel in read_kernels:
-        for write_kernel in write_kernels:
-            for write_mode in write_modes:
-                print("=============================================================")
-                # Construct the command based on the kernels
-                if write_mode == "host":
-                    command = f"./kvapp --tb 1 --w {write_mode} --rk {read_kernel}"
-                else: # device
-                    command = f"./kvapp --tb 1 --w {write_mode} --wk {write_kernel} --rk {read_kernel}"
-                
-                # Run the command and check the result
+        for write_mode in write_modes:
+            print("=============================================================")
+            if write_mode == "host":
+                command = f"./kvapp --tb 1 --w {write_mode} --rk {read_kernel}"
                 success, log = run_command(command)
                 if not success or check_for_wrong(log, f"{mode} {write_mode} writes + {read_kernel}"):
                     exit(1)
+            elif write_mode == "device":
+                for write_kernel in write_kernels:
+                    command = f"./kvapp --tb 1 --w {write_mode} --wk {write_kernel} --rk {read_kernel}"
+                    success, log = run_command(command)
+                    if not success or check_for_wrong(log, f"{mode} {write_mode} writes + {read_kernel}"):
+                        exit(1)
 
 def main():
     print("=============================================================")

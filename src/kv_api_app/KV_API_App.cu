@@ -538,86 +538,109 @@ void appPutHCalls(int numThreadBlocks, KeyValueStore *kvStore){
     saveYAMLToFile();
 }
 
-struct Option {
-    std::string flag;
-    std::string description;
-};
-
-void showHelp(const std::vector<Option> &options) {
-    std::cout << "Available options:\n";
-    for (const auto &opt : options) {
-        std::cout << "  " << opt.flag << " : " << opt.description << "\n";
-    }
-}
-
-void parseArguments(int argc, char* argv[], int &numThreadBlocks, std::string &wMode, std::string &rKernel, std::string &wKernel) {
-    std::vector<Option> options = {
-        {"--tb, --thread-blocks <num>", "Specify the number of thread blocks (e.g., --tb 4)"},
-        {"--w, --write <host|device>", "Specify write mode as host (h) or device (d) (e.g., --w host)"},
-        {"--wk, --write-kernel <sync|async>", "Specify write kernel as sync or async (e.g., --wk sync)"},
-        {"--rk, --read-kernel <sync|async|async-zc>", "Specify read kernel as sync, async, or async-zc (e.g., --rk sync)"},
-        {"--help, -h", "Show this help message"}
+class ArgumentParser {
+public:
+    struct Option {
+        std::string flag;
+        std::string description;
     };
 
-    for (int i = 1; i < argc; ++i) {
-        if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
-            showHelp(options);
-            exit(0);
-        }
-        else if ((strcmp(argv[i], "--tb") == 0 || strcmp(argv[i], "--thread-blocks") == 0) && i + 1 < argc) {
-            numThreadBlocks = std::atoi(argv[++i]);
-        }
-        else if ((strcmp(argv[i], "--w") == 0 || strcmp(argv[i], "--write") == 0) && i + 1 < argc) {
-            wMode = argv[++i];
-            std::transform(wMode.begin(), wMode.end(), wMode.begin(), [](unsigned char c){ return std::tolower(c); });
-            if (wMode == "host" || wMode == "h")
-                wMode = "h";
-            else if (wMode == "device" || wMode == "d")
-                wMode = "d";
-            else{
-                std::cout << "Write mode unavailable, choose h (host) or d (device). Using default value " << wMode << std::endl;
-            }
-        }
-        else if ((strcmp(argv[i], "--rk") == 0 || strcmp(argv[i], "--read-kernel") == 0) && i + 1 < argc) {
-            rKernel = argv[++i];
-            std::transform(rKernel.begin(), rKernel.end(), rKernel.begin(), [](unsigned char c){ return std::tolower(c); });
-            if (rKernel == "sync")
-                rKernel = "sync";
-            else if (rKernel == "async")
-                rKernel = "async";
-            else if (rKernel == "async-zc")
-                rKernel = "async-zc";
-            else{
-                std::cout << "Read kernel unavailable, choose sync or async. Using default value " << rKernel << std::endl;
-            }
-        }
-        if ((strcmp(argv[i], "--wk") == 0 || strcmp(argv[i], "--write-kernel") == 0) && i + 1 < argc) {
-            if (wMode == "h"){
-                std::cout << "Write kernel is only available in device mode. Ignoring write kernel argument." << std::endl;
-                continue;
-            }
-            
-            wKernel = argv[++i];
-            std::transform(wKernel.begin(), wKernel.end(), wKernel.begin(), [](unsigned char c){ return std::tolower(c); });
-            if (wKernel == "sync")
-                wKernel = "sync";
-            else if (wKernel == "async")
-                wKernel = "async";
-            else {
-                std::cout << "Write kernel unavailable, choose sync or async. Using default value " << wKernel << std::endl;
+    ArgumentParser() : numThreadBlocks(DEFAULT_NUM_THREAD_BLOCKS), wMode(DEFAULT_W_MODE), rKernel(DEFAULT_R_KERNEL), wKernel(DEFAULT_W_KERNEL) {
+        // Initialize the available options
+        options = {
+            {"--tb, --thread-blocks <num>", "Specify the number of thread blocks (e.g., --tb 4)"},
+            {"--w, --write <host|device>", "Specify write mode as host (h) or device (d) (e.g., --w host)"},
+            {"--wk, --write-kernel <sync|async>", "Specify write kernel as sync or async (e.g., --wk sync)"},
+            {"--rk, --read-kernel <sync|async|async-zc>", "Specify read kernel as sync, async, or async-zc (e.g., --rk sync)"},
+            {"--help, -h", "Show this help message"}
+        };
+    }
+
+    void parseArguments(int argc, char* argv[]) {
+        for (int i = 1; i < argc; ++i) {
+            if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
+                showHelp();
+                exit(0);
+            } else if ((strcmp(argv[i], "--tb") == 0 || strcmp(argv[i], "--thread-blocks") == 0) && i + 1 < argc) {
+                numThreadBlocks = std::atoi(argv[++i]);
+            } else if ((strcmp(argv[i], "--w") == 0 || strcmp(argv[i], "--write") == 0) && i + 1 < argc) {
+                parseWriteMode(argv[++i]);
+            } else if ((strcmp(argv[i], "--rk") == 0 || strcmp(argv[i], "--read-kernel") == 0) && i + 1 < argc) {
+                parseReadKernel(argv[++i]);
+            } else if ((strcmp(argv[i], "--wk") == 0 || strcmp(argv[i], "--write-kernel") == 0) && i + 1 < argc) {
+                parseWriteKernel(argv[++i]);
+            } else if (argv[i][0] == '-') {
+                std::cerr << "Error: Unknown flag '" << argv[i] << "'" << std::endl;
+                showHelp();
+                exit(1);
             }
         }
 
+        validateKernels();
     }
 
-    // Check if CONCURRENT_COUNT <= NUM_ITERATIONS when using async kernels
-    if (((rKernel == "async" || rKernel == "async-zc") || wKernel == "async") && CONCURRENT_COUNT > NUM_ITERATIONS) {
-        std::cerr << "Error: CONCURRENT_COUNT (" << CONCURRENT_COUNT 
-                  << ") must be less than or equal to NUM_ITERATIONS (" << NUM_ITERATIONS 
-                  << ") when using async kernels." << std::endl;
-        exit(1); // Exit with an error code
+    // Accessors for parsed values
+    int getNumThreadBlocks() const { return numThreadBlocks; }
+    std::string getWriteMode() const { return wMode; }
+    std::string getReadKernel() const { return rKernel; }
+    std::string getWriteKernel() const { return wKernel; }
+
+private:
+    int numThreadBlocks;
+    std::string wMode;
+    std::string rKernel;
+    std::string wKernel;
+    std::vector<Option> options;
+
+    void showHelp() const {
+        std::cout << "Available options:\n";
+        for (const auto &opt : options) {
+            std::cout << "  " << opt.flag << " : " << opt.description << "\n";
+        }
     }
-}
+
+    void parseWriteMode(const char* arg) {
+        wMode = arg;
+        std::transform(wMode.begin(), wMode.end(), wMode.begin(), [](unsigned char c){ return std::tolower(c); });
+        if (wMode == "host" || wMode == "h")
+            wMode = "h";
+        else if (wMode == "device" || wMode == "d")
+            wMode = "d";
+        else {
+            std::cout << "Write mode unavailable, choose h (host) or d (device). Using default value " << wMode << std::endl;
+        }
+    }
+
+    void parseReadKernel(const char* arg) {
+        rKernel = arg;
+        std::transform(rKernel.begin(), rKernel.end(), rKernel.begin(), [](unsigned char c){ return std::tolower(c); });
+        if (rKernel != "sync" && rKernel != "async" && rKernel != "async-zc") {
+            std::cout << "Read kernel unavailable, choose sync, async, or async-zc. Using default value " << rKernel << std::endl;
+        }
+    }
+
+    void parseWriteKernel(const char* arg) {
+        if (wMode == "h") {
+            std::cout << "Write kernel is only available in device mode. Ignoring write kernel argument." << std::endl;
+            return;
+        }
+        wKernel = arg;
+        std::transform(wKernel.begin(), wKernel.end(), wKernel.begin(), [](unsigned char c){ return std::tolower(c); });
+        if (wKernel != "sync" && wKernel != "async") {
+            std::cout << "Write kernel unavailable, choose sync or async. Using default value " << wKernel << std::endl;
+        }
+    }
+
+    void validateKernels() const {
+        // Check if CONCURRENT_COUNT <= NUM_ITERATIONS when using async kernels
+        if (((rKernel == "async" || rKernel == "async-zc") || wKernel == "async") && CONCURRENT_COUNT > NUM_ITERATIONS) {
+            std::cerr << "Error: CONCURRENT_COUNT (" << CONCURRENT_COUNT 
+                      << ") must be less than or equal to NUM_ITERATIONS (" << NUM_ITERATIONS 
+                      << ") when using async kernels." << std::endl;
+            exit(1); // Exit with an error code
+        }
+    }
+};
 
 void printSettings(int numThreadBlocks, int blockSize, const std::string &wMode, const std::string &rKernel, std::string &wKernel){
     std::cout << "---------------------------------------" << std::endl;
@@ -647,12 +670,15 @@ void printSettings(int numThreadBlocks, int blockSize, const std::string &wMode,
 }
 
 int main(int argc, char* argv[]) {
-    int numThreadBlocks = DEFAULT_NUM_THREAD_BLOCKS;
     const int blockSize = NUM_THREADS_PER_THREAD_BLOCK;
-    std::string wMode = DEFAULT_W_MODE;
-    std::string rKernel = DEFAULT_R_KERNEL;
-    std::string wKernel = DEFAULT_W_KERNEL;
-    parseArguments(argc, argv, numThreadBlocks, wMode, rKernel, wKernel);
+    ArgumentParser parser;
+    parser.parseArguments(argc, argv);
+
+    int numThreadBlocks = parser.getNumThreadBlocks();
+    std::string wMode = parser.getWriteMode();
+    std::string rKernel = parser.getReadKernel();
+    std::string wKernel = parser.getWriteKernel();
+
     printSettings(numThreadBlocks, blockSize, wMode, rKernel, wKernel);
     saveYAMLToFile();
 
