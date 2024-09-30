@@ -1,5 +1,12 @@
 #include "key_value_store.cuh"
 #define THREAD_ID (threadIdx.z * blockDim.y * blockDim.x + threadIdx.y * blockDim.x + threadIdx.x)
+#define T0_NOT_SUPPORTED_PRINT_DEVICE(func_name) \
+    BEGIN_THREAD_ZERO { \
+        printf("%s is not supported in this mode.\n", #func_name); \
+    } END_THREAD_ZERO
+
+#define NOT_SUPPORTED_PRINT_HOST(func_name) \
+    printf("%s is not supported in this mode.\n", #func_name);
 
 std::string getCommandString(CommandType command) {
     static const std::map<CommandType, std::string> commandStrings = {
@@ -1226,4 +1233,123 @@ void KVExitD(KeyValueStore *kvStore) {
     while (!submission_queue->push_no_data(&tbResources, tid, CommandType::EXIT, tbResources.request_id));
     // Immediately wait for a response
     while (!completion_queue->pop_no_res_msg(&tbResources, tid));
+}
+
+// KeyValueStoreVLLM
+KeyValueStoreVLLM::KeyValueStoreVLLM(const int numThreadBlocks, const int blockSize, int maxValueSize, int maxNumKeys, int maxKeySize) {
+    // Read KeyValueStoreVLLM
+    CUDA_ERRCHECK(cudaHostAlloc((void **)&kvStoreR, sizeof(KeyValueStore), cudaHostAllocMapped));
+    try {
+        new (kvStoreR) KeyValueStore(numThreadBlocks, blockSize, maxValueSize, maxNumKeys, maxKeySize);
+    }
+    catch (const string& e) {
+        std::cerr << "kvStoreR: " << e.c_str() << std::endl;
+        CUDA_ERRCHECK(cudaFreeHost(kvStoreR));
+        exit(1);
+    }
+
+    // Write KeyValueStoreVLLM
+    CUDA_ERRCHECK(cudaHostAlloc((void **)&kvStoreW, sizeof(KeyValueStore), cudaHostAllocMapped));
+    try {
+        new (kvStoreW) KeyValueStore(numThreadBlocks, blockSize, maxValueSize, maxNumKeys, maxKeySize);
+    }
+    catch (const string& e) {
+        std::cerr << "kvStoreW: " << e.c_str() << std::endl;
+        CUDA_ERRCHECK(cudaFreeHost(kvStoreW));
+        CUDA_ERRCHECK(cudaFreeHost(kvStoreR));
+        exit(1);
+    }
+}
+
+KeyValueStoreVLLM::~KeyValueStoreVLLM(){
+    kvStoreR->~KeyValueStore();
+    CUDA_ERRCHECK(cudaFreeHost(kvStoreR));
+    kvStoreW->~KeyValueStore();
+    CUDA_ERRCHECK(cudaFreeHost(kvStoreW));
+}
+
+bool KeyValueStoreVLLM::KVOpenDB() {
+    return KeyValueStore::KVOpenDB();
+}
+
+bool KeyValueStoreVLLM::KVCloseDB() {
+    return KeyValueStore::KVCloseDB();
+}
+
+bool KeyValueStoreVLLM::KVDeleteDB() {
+    return KeyValueStore::KVDeleteDB();
+}
+
+__device__ 
+void KeyValueStoreVLLM::KVPutD(void* key, unsigned int keySize, void* buff, unsigned int buffSize, KVStatusType &KVStatus) {
+    int tid = THREAD_ID;
+    T0_NOT_SUPPORTED_PRINT_DEVICE(KVAsyncGetInitiateD);
+}
+
+__device__ 
+void KeyValueStoreVLLM::KVMultiPutD(void* keys[], unsigned int keySize, void* buffs[], unsigned int buffSize, KVStatusType KVStatus[], int numKeys) {
+    int tid = THREAD_ID;
+    T0_NOT_SUPPORTED_PRINT_DEVICE(KVAsyncGetInitiateD);
+}
+
+__device__ 
+void KeyValueStoreVLLM::KVGetD(void* key, const unsigned int keySize, void* buff, const unsigned int buffSize, KVStatusType &KVStatus) {         
+    int tid = THREAD_ID;
+    T0_NOT_SUPPORTED_PRINT_DEVICE(KVAsyncGetInitiateD);
+}
+
+__device__ 
+void KeyValueStoreVLLM::KVMultiGetD(void* keys[], const unsigned int keySize, void* buffs[], const unsigned int buffSize, KVStatusType KVStatus[], int numKeys) {
+    int tid = THREAD_ID;
+    T0_NOT_SUPPORTED_PRINT_DEVICE(KVAsyncGetInitiateD);
+}
+
+__device__ 
+void KeyValueStoreVLLM::KVDeleteD(void* key, unsigned int keySize, KVStatusType KVStatus[]) {
+    int tid = THREAD_ID;
+    T0_NOT_SUPPORTED_PRINT_DEVICE(KVAsyncGetInitiateD);
+}
+
+// Async Put
+__device__ 
+void KeyValueStoreVLLM::KVAsyncPutInitiateD(void* keys[], unsigned int keySize, void* buffs[], unsigned int buffSize, int numKeys) {
+    kvStoreW->KVAsyncPutInitiateD(keys, keySize, buffs, buffSize, numKeys);
+}
+
+__device__ 
+void KeyValueStoreVLLM::KVAsyncPutFinalizeD(KVStatusType KVStatus[], int numKeys) {
+    kvStoreW->KVAsyncPutFinalizeD(KVStatus, numKeys);
+}
+
+// Async Get
+__device__ 
+void KeyValueStoreVLLM::KVAsyncGetInitiateD(void* keys[], const unsigned int keySize, int numKeys) {
+    int tid = THREAD_ID;
+    T0_NOT_SUPPORTED_PRINT_DEVICE(KVAsyncGetInitiateD);
+}
+
+__device__ 
+void KeyValueStoreVLLM::KVAsyncGetFinalizeD(void* buffs[], const unsigned int buffSize, KVStatusType KVStatus[], int numKeys) {
+    kvStoreR->KVAsyncGetFinalizeD(buffs, buffSize, KVStatus, numKeys);
+}
+
+// Async Get ZC
+__device__ 
+void KeyValueStoreVLLM::KVAsyncGetZCInitiateD(void* keys[], const unsigned int keySize, GPUMultiBufferHandle& valMultiBuff, const unsigned int buffSize, GPUMultiBufferHandle& kvStatusMultiBuff, int numKeys, unsigned int *p_ticket) {
+    kvStoreR->KVAsyncGetZCInitiateD(keys, keySize, valMultiBuff, buffSize, kvStatusMultiBuff, numKeys, p_ticket);
+}
+
+__device__
+void KeyValueStoreVLLM::KVAsyncGetZCFinalizeD(unsigned int ticket){
+    kvStoreR->KVAsyncGetZCFinalizeD(ticket);
+}
+
+__host__
+void KeyValueStoreVLLM::KVMultiPutH(void* keys[], unsigned int keySize, void* buffs[], unsigned int buffSize, KVStatusType KVStatus[], size_t numKeys){
+    NOT_SUPPORTED_PRINT_HOST(KVMultiPutH);
+}
+
+__host__
+void KeyValueStoreVLLM::KVPutH(void* key, unsigned int keySize, void* buff, unsigned int buffSize, KVStatusType &KVStatus){
+    NOT_SUPPORTED_PRINT_HOST(KVPutH);
 }
