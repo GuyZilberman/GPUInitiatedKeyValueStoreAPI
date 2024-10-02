@@ -770,7 +770,18 @@ void KeyValueStore::process_kv_request(KVMemHandle &kvMemHandle, int blockIndex,
 #ifdef STORELIB_LOOPBACK
         curr_res_msg.KVStatus[0] = KVStatusType::SUCCESS;
 #elif defined(IN_MEMORY_STORE)
-        curr_res_msg.KVStatus[0] = KVStatusType::SUCCESS;
+        std::array<unsigned char, MAX_KEY_SIZE> keyArray;
+        std::copy((unsigned char*)submission_queue->req_msg_arr[currModTail].key,
+                (unsigned char*)submission_queue->req_msg_arr[currModTail].key + submission_queue->req_msg_arr[currModTail].keySize,
+                keyArray.begin());
+    
+        // Check if the key was successfully deleted
+        if (inMemoryStoreMap.erase(keyArray)) {
+            curr_res_msg.KVStatus[0] = KVStatusType::SUCCESS;
+        } else {
+            curr_res_msg.KVStatus[0] = KVStatusType::NON_EXIST;
+        }
+        
 #else
         ret = PLIOPS_Delete(plio_handle, &req_msg.key, req_msg.keySize, NO_OPTIONS);
         handle_status(curr_res_msg.KVStatus[0], ret,  req_msg.cmd, req_msg.request_id, req_msg.key);

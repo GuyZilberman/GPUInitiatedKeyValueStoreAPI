@@ -1,18 +1,13 @@
 {
     "files.associations": {
-        "future": "cpp",
         "iostream": "cpp",
-        "__verbose_abort": "cpp",
-        "chrono": "cpp",
         "array": "cpp",
         "atomic": "cpp",
         "*.tcc": "cpp",
-        "bitset": "cpp",
         "cctype": "cpp",
+        "chrono": "cpp",
         "clocale": "cpp",
         "cmath": "cpp",
-        "codecvt": "cpp",
-        "complex": "cpp",
         "condition_variable": "cpp",
         "cstdarg": "cpp",
         "cstddef": "cpp",
@@ -46,6 +41,7 @@
         "type_traits": "cpp",
         "utility": "cpp",
         "fstream": "cpp",
+        "future": "cpp",
         "initializer_list": "cpp",
         "iomanip": "cpp",
         "iosfwd": "cpp",
@@ -61,17 +57,6 @@
         "cinttypes": "cpp",
         "typeinfo": "cpp",
         "valarray": "cpp",
-        "bit": "cpp",
-        "__nullptr": "cpp",
-        "filesystem": "cpp",
-        "queue": "cpp",
-        "stack": "cpp",
-        "__node_handle": "cpp",
-        "__bit_reference": "cpp",
-        "__functional_base": "cpp",
-        "__memory": "cpp",
-        "__hash_table": "cpp",
-        "__split_buffer": "cpp",
-        "__tree": "cpp"
+        "bit": "cpp"
     }
 }
