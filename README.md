@@ -16,6 +16,54 @@ Before getting started, make sure you have the following dependencies installed:
 - `gdrcopy`: You can find detailed installation instructions on the [gdrcopy GitHub repository](https://github.com/NVIDIA/gdrcopy).
 
 
+## Installing XDP on Host
+### Install
+To install XDP on host, follow the instructions below:
+
+Ubuntu 22.04:
+```
+sudo apt-get install packages/ubuntu22.04/pliops-xdp-onhost_3.0.2.0.deb
+```
+
+Ubuntu 20.04:
+```
+sudo apt-get install packages/ubuntu20.04/pliops-xdp-onhost_3.0.2.0.deb
+```
+
+RHEL 9.4:
+```
+sudo yum install packages/redhat9.4/pliops-xdp-onhost_3.0.2.0.rpm
+```
+### Configuring XDP on Host:
+
+Once installed, configure the system using the following command, replacing `MEDIA_DEVICES_LIST` with the list of NVMe SSD devices:
+```
+sudo /etc/opt/pliops/xdp-onhost/xdp-oh_configurator setup --resources="MEDIA_DEVICES_LIST"
+```
+
+e.g.
+```
+sudo /etc/opt/pliops/xdp-onhost/xdp-oh_configurator setup --resources="/dev/nvme1n1 /dev/nvme2n1 /dev/nvme3n1"
+```
+### Uninstalling XDP on Host:
+
+If you need to uninstall XDP on host, first stop XDP on host:
+```
+sudo /etc/opt/pliops/xdp-onhost/xdp-oh_configurator stop
+```
+
+Then follow the appropriate step for your system:
+
+Ubuntu:
+```
+sudo apt-get remove pliops-xdp-onhost
+```
+
+RHEL:
+```
+sudo yum remove pliops-xdp-onhost
+```
+
 ## Configuration
 
 To configure the KeyValueStore API, you can modify `cfg/config.yaml`. This file contains various settings that control the behavior of the API. Here are some key configurations you can modify:
@@ -62,7 +110,7 @@ Allocate pinned memory accessible by both CPU and GPU for a KeyValueStore instan
 Construct a KeyValueStore object in the allocated memory with specified thread blocks and block size.
 ```cpp
 KeyValueStore *kvStore;
-CUDA_ERRCHECK(cudaHostAlloc((void **)&kvStore, sizeof(KeyValueStore), cudaHostAllocMapped));
+cudaHostAlloc((void **)&kvStore, sizeof(KeyValueStore), cudaHostAllocMapped);
 new (kvStore) KeyValueStore(numThreadBlocks, blockSize, DATA_ARR_SIZE*sizeof(int), NUM_KEYS, sizeof(int));
 ```
 
