@@ -142,9 +142,9 @@ KeyValueStore::KVDeleteDB();
 
 
 ## Asynchronous API
-### Memory Allocation API
 The asynchronous API is ideal for scenarios where overlapping data transfers with computations can provide significant performance improvements.
-To use the Asynchronous API, you need to allocate buffers in the following manner:
+### Zero-Copy Memory Allocation API
+If you wish to use the zero-copy asynchronous API for non-blocking operations, allocate buffers as follows:
 ```cpp
 GPUMultiBufferHandle arrOfUserMultiBuffer[CONCURRENT_COUNT]; 
 GPUMultiBufferHandle arrOfUserKVStatusArr[CONCURRENT_COUNT];
@@ -158,13 +158,36 @@ for (size_t i = 0; i < CONCURRENT_COUNT; i++)
 }
 ```
 
-Then, you may use the following API to start an async non-blocking multi-get operation
+Then initiate an async non-blocking multi-get operation:
 ```cpp
-kvStore->KVAsyncGetInitiateD(keys, sizeof(int), arrOfUserMultiBuffer[idx], sizeof(int) * DATA_ARR_SIZE, arrOfUserKVStatusArr[idx], NUM_KEYS, &ticket_arr[idx]);
+kvStore->KVAsyncMultiGetZCInitiateD(keys, sizeof(int), arrOfUserMultiBuffer[idx], sizeof(int) * DATA_ARR_SIZE, arrOfUserKVStatusArr[idx], NUM_KEYS, &ticket_arr[idx]);
 ```
-And then use the following blocking API to finalize the operation
+To finalize the operation:
 ```cpp
-kvStore->KVAsyncGetFinalizeD(ticket_arr[idx]);
+kvStore->KVAsyncMultiGetZCFinalizeD(ticket_arr[idx]);
+```
+
+### Simplified Asynchronous API
+For scenarios where simplicity is preferred, you can now use a straightforward asynchronous API for put and get operations without needing special memory allocations.
+
+#### Asynchronous Put API
+To initiate a non-blocking simple async put operation:
+```cpp
+kvStore->KVAsyncMultiPutInitiateD((void**)userResources.keys, sizeof(int), (void**)userResources.buffs, sizeof(int) * DATA_ARR_SIZE, NUM_KEYS);
+```
+To finalize the operation:
+```cpp
+kvStore->KVAsyncMultiPutFinalizeD(userResources.KVStatus, NUM_KEYS);
+```
+
+#### Asynchronous Get API
+To initiate a non-blocking simple async get operation:
+```cpp
+kvStore->KVAsyncMultiGetInitiateD((void**)userResources.keys, sizeof(int), NUM_KEYS);
+```
+To finalize the operation:
+```cpp
+kvStore->KVAsyncMultiGetFinalizeD((void**)userResources.buffs, sizeof(int) * DATA_ARR_SIZE, userResources.KVStatus, NUM_KEYS);
 ```
 
 ## Acknowledgement

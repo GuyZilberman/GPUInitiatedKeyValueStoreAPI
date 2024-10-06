@@ -1058,7 +1058,7 @@ void KeyValueStore::KVDeleteD(void* key, unsigned int keySize, KVStatusType KVSt
 
 // Async Put
 __device__ 
-void KeyValueStore::KVAsyncPutInitiateD(void* keys[], unsigned int keySize, void* buffs[], unsigned int buffSize, int numKeys) {
+void KeyValueStore::KVAsyncMultiPutInitiateD(void* keys[], unsigned int keySize, void* buffs[], unsigned int buffSize, int numKeys) {
     HostSubmissionQueueWithDataBank *d_hostmem_p = h_hostmem_p;
     DeviceCompletionQueueWithDataBank *d_devmem_p = (DeviceCompletionQueueWithDataBank *)sharedGPUCompletionQueueWithDataBank.getDevicePtr();
 
@@ -1074,7 +1074,7 @@ void KeyValueStore::KVAsyncPutInitiateD(void* keys[], unsigned int keySize, void
 }
 
 __device__ 
-void KeyValueStore::KVAsyncPutFinalizeD(KVStatusType KVStatus[], int numKeys) {
+void KeyValueStore::KVAsyncMultiPutFinalizeD(KVStatusType KVStatus[], int numKeys) {
     DeviceCompletionQueueWithDataBank *d_devmem_p = (DeviceCompletionQueueWithDataBank *)this->sharedGPUCompletionQueueWithDataBank.getDevicePtr();
 
     int blockIndex = blockIdx.x;
@@ -1089,7 +1089,7 @@ void KeyValueStore::KVAsyncPutFinalizeD(KVStatusType KVStatus[], int numKeys) {
 
 // Async Get
 __device__ 
-void KeyValueStore::KVAsyncGetInitiateD(void* keys[], const unsigned int keySize, int numKeys) {
+void KeyValueStore::KVAsyncMultiGetInitiateD(void* keys[], const unsigned int keySize, int numKeys) {
     HostSubmissionQueueWithDataBank *d_hostmem_p = this->h_hostmem_p;
     DeviceCompletionQueueWithDataBank *d_devmem_p = (DeviceCompletionQueueWithDataBank *)this->sharedGPUCompletionQueueWithDataBank.getDevicePtr();
     int blockIndex = blockIdx.x;
@@ -1102,7 +1102,7 @@ void KeyValueStore::KVAsyncGetInitiateD(void* keys[], const unsigned int keySize
 }
 
 __device__ 
-void KeyValueStore::KVAsyncGetFinalizeD(void* buffs[], const unsigned int buffSize, KVStatusType KVStatus[], int numKeys) {
+void KeyValueStore::KVAsyncMultiGetFinalizeD(void* buffs[], const unsigned int buffSize, KVStatusType KVStatus[], int numKeys) {
     DeviceCompletionQueueWithDataBank *d_devmem_p = (DeviceCompletionQueueWithDataBank *)this->sharedGPUCompletionQueueWithDataBank.getDevicePtr();
     int blockIndex = blockIdx.x;
     const int tid = THREAD_ID;
@@ -1116,7 +1116,7 @@ void KeyValueStore::KVAsyncGetFinalizeD(void* buffs[], const unsigned int buffSi
 
 // Async Get ZC
 __device__ 
-void KeyValueStore::KVAsyncGetZCInitiateD(void* keys[], const unsigned int keySize, GPUMultiBufferHandle& valMultiBuff, const unsigned int buffSize, GPUMultiBufferHandle& kvStatusMultiBuff, int numKeys, unsigned int *p_ticket) {
+void KeyValueStore::KVAsyncMultiGetZCInitiateD(void* keys[], const unsigned int keySize, GPUMultiBufferHandle& valMultiBuff, const unsigned int buffSize, GPUMultiBufferHandle& kvStatusMultiBuff, int numKeys, unsigned int *p_ticket) {
     HostSubmissionQueueWithDataBank *d_hostmem_p = h_hostmem_p;
     DeviceCompletionQueueWithDataBank *d_devmem_p = (DeviceCompletionQueueWithDataBank *)sharedGPUCompletionQueueWithDataBank.getDevicePtr();
 
@@ -1135,7 +1135,7 @@ void KeyValueStore::KVAsyncGetZCInitiateD(void* keys[], const unsigned int keySi
 }
 
 __device__
-void KeyValueStore::KVAsyncGetZCFinalizeD(unsigned int ticket){
+void KeyValueStore::KVAsyncMultiGetZCFinalizeD(unsigned int ticket){
     HostSubmissionQueueWithDataBank *d_hostmem_p = h_hostmem_p;
     DeviceCompletionQueueWithDataBank *d_devmem_p = (DeviceCompletionQueueWithDataBank *)sharedGPUCompletionQueueWithDataBank.getDevicePtr();
 

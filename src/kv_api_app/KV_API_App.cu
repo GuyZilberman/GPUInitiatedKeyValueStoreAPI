@@ -189,26 +189,26 @@ void async_read_kernel_3phase(KeyValueStore *kvStore, UserResources* d_userResou
 
     while (userResources.idx < CONCURRENT_COUNT){
         T0_readKernelIOInit(userResources, blockIndex, numIterations);
-        kvStore->KVAsyncGetInitiateD((void**)userResources.keys, sizeof(int), NUM_KEYS);
+        kvStore->KVAsyncMultiGetInitiateD((void**)userResources.keys, sizeof(int), NUM_KEYS);
     }
     
     while (userResources.idx < numIterations){
         T0_readKernelIOInit(userResources, blockIndex, numIterations);
-        kvStore->KVAsyncGetFinalizeD((void**)userResources.buffs, sizeof(int) * DATA_ARR_SIZE, userResources.KVStatus, NUM_KEYS);
+        kvStore->KVAsyncMultiGetFinalizeD((void**)userResources.buffs, sizeof(int) * DATA_ARR_SIZE, userResources.KVStatus, NUM_KEYS);
 #ifdef CHECK_WRONG_ANSWERS
         for (size_t i = 0; i < NUM_KEYS; i++)
         {
             T0_check_wrong_answer((int*) userResources.buffs[i], userResources.idx - CONCURRENT_COUNT, wrong_answers);
         }
 #endif
-        kvStore->KVAsyncGetInitiateD((void**)userResources.keys, sizeof(int), NUM_KEYS);
+        kvStore->KVAsyncMultiGetInitiateD((void**)userResources.keys, sizeof(int), NUM_KEYS);
     }
     
     while (userResources.idx < numIterations + CONCURRENT_COUNT){
         BEGIN_THREAD_ZERO {
             userResources.idx++;
         } END_THREAD_ZERO
-        kvStore->KVAsyncGetFinalizeD((void**)userResources.buffs, sizeof(int) * DATA_ARR_SIZE, userResources.KVStatus, NUM_KEYS);
+        kvStore->KVAsyncMultiGetFinalizeD((void**)userResources.buffs, sizeof(int) * DATA_ARR_SIZE, userResources.KVStatus, NUM_KEYS);
 #ifdef CHECK_WRONG_ANSWERS
         for (size_t i = 0; i < NUM_KEYS; i++)
         {
@@ -232,26 +232,26 @@ void async_read_kernel_3phase_ZC(KeyValueStore *kvStore, UserResources* d_userRe
 
     while (userResources.idx < CONCURRENT_COUNT){
         T0_ZCReadKernelIOInit(userResources, blockIndex, numIterations);
-        kvStore->KVAsyncGetZCInitiateD((void**)userResources.keys, sizeof(int), userResources.arrOfUserMultiBuffer[userResources.idx % CONCURRENT_COUNT], sizeof(int) * DATA_ARR_SIZE, userResources.arrOfUserKVStatusArr[userResources.idx % CONCURRENT_COUNT], NUM_KEYS, &ticket_arr[userResources.idx % CONCURRENT_COUNT]);
+        kvStore->KVAsyncMultiGetZCInitiateD((void**)userResources.keys, sizeof(int), userResources.arrOfUserMultiBuffer[userResources.idx % CONCURRENT_COUNT], sizeof(int) * DATA_ARR_SIZE, userResources.arrOfUserKVStatusArr[userResources.idx % CONCURRENT_COUNT], NUM_KEYS, &ticket_arr[userResources.idx % CONCURRENT_COUNT]);
     }
     
     while (userResources.idx < numIterations){
         T0_ZCReadKernelIOInit(userResources, blockIndex, numIterations);
-        kvStore->KVAsyncGetZCFinalizeD(ticket_arr[(userResources.idx - CONCURRENT_COUNT) % CONCURRENT_COUNT]);
+        kvStore->KVAsyncMultiGetZCFinalizeD(ticket_arr[(userResources.idx - CONCURRENT_COUNT) % CONCURRENT_COUNT]);
 #ifdef CHECK_WRONG_ANSWERS
         for (size_t i = 0; i < NUM_KEYS; i++)
         {
             T0_check_wrong_answer((int*) userResources.arrOfUserMultiBuffer[(userResources.idx - CONCURRENT_COUNT) % CONCURRENT_COUNT].getDevicePtrSingleBuffer(i), userResources.idx - CONCURRENT_COUNT, wrong_answers);
         }
 #endif
-        kvStore->KVAsyncGetZCInitiateD((void**)userResources.keys, sizeof(int), userResources.arrOfUserMultiBuffer[userResources.idx % CONCURRENT_COUNT], sizeof(int) * DATA_ARR_SIZE, userResources.arrOfUserKVStatusArr[userResources.idx % CONCURRENT_COUNT], NUM_KEYS, &ticket_arr[userResources.idx % CONCURRENT_COUNT]);
+        kvStore->KVAsyncMultiGetZCInitiateD((void**)userResources.keys, sizeof(int), userResources.arrOfUserMultiBuffer[userResources.idx % CONCURRENT_COUNT], sizeof(int) * DATA_ARR_SIZE, userResources.arrOfUserKVStatusArr[userResources.idx % CONCURRENT_COUNT], NUM_KEYS, &ticket_arr[userResources.idx % CONCURRENT_COUNT]);
     }
     
     while (userResources.idx < numIterations + CONCURRENT_COUNT){
         BEGIN_THREAD_ZERO {
             userResources.idx++;
         } END_THREAD_ZERO
-        kvStore->KVAsyncGetZCFinalizeD(ticket_arr[(userResources.idx - CONCURRENT_COUNT) % CONCURRENT_COUNT]);
+        kvStore->KVAsyncMultiGetZCFinalizeD(ticket_arr[(userResources.idx - CONCURRENT_COUNT) % CONCURRENT_COUNT]);
 #ifdef CHECK_WRONG_ANSWERS
         for (size_t i = 0; i < NUM_KEYS; i++)
         {
@@ -275,7 +275,7 @@ void async_read_kernel_2phase_ZC(KeyValueStore *kvStore, UserResources* d_userRe
 
     while (userResources.idx < CONCURRENT_COUNT){
         T0_ZCReadKernelIOInit(userResources, blockIndex, numIterations);
-        kvStore->KVAsyncGetZCInitiateD((void**)userResources.keys, 
+        kvStore->KVAsyncMultiGetZCInitiateD((void**)userResources.keys, 
         sizeof(int), 
         userResources.arrOfUserMultiBuffer[userResources.idx % CONCURRENT_COUNT], 
         sizeof(int) * DATA_ARR_SIZE, 
@@ -292,7 +292,7 @@ void async_read_kernel_2phase_ZC(KeyValueStore *kvStore, UserResources* d_userRe
         BEGIN_THREAD_ZERO {
             userResources.idx++;
         } END_THREAD_ZERO
-        kvStore->KVAsyncGetZCFinalizeD(ticket_arr[(userResources.idx) % CONCURRENT_COUNT]);
+        kvStore->KVAsyncMultiGetZCFinalizeD(ticket_arr[(userResources.idx) % CONCURRENT_COUNT]);
 #ifdef CHECK_WRONG_ANSWERS
         for (size_t i = 0; i < NUM_KEYS; i++)
         {
@@ -335,21 +335,21 @@ void async_write_kernel_3phase(KeyValueStore *kvStore, UserResources* d_userReso
 
     while (userResources.idx < CONCURRENT_COUNT){
         T0_writeKernelIOInit(userResources, blockIndex, numIterations);
-        kvStore->KVAsyncPutInitiateD((void**)userResources.keys, sizeof(int), (void**)userResources.buffs, sizeof(int) * DATA_ARR_SIZE, NUM_KEYS);
+        kvStore->KVAsyncMultiPutInitiateD((void**)userResources.keys, sizeof(int), (void**)userResources.buffs, sizeof(int) * DATA_ARR_SIZE, NUM_KEYS);
     }
     
         
     while (userResources.idx < numIterations){
         T0_writeKernelIOInit(userResources, blockIndex, numIterations);
-        kvStore->KVAsyncPutFinalizeD(userResources.KVStatus, NUM_KEYS);
-        kvStore->KVAsyncPutInitiateD((void**)userResources.keys, sizeof(int), (void**)userResources.buffs, sizeof(int) * DATA_ARR_SIZE, NUM_KEYS);
+        kvStore->KVAsyncMultiPutFinalizeD(userResources.KVStatus, NUM_KEYS);
+        kvStore->KVAsyncMultiPutInitiateD((void**)userResources.keys, sizeof(int), (void**)userResources.buffs, sizeof(int) * DATA_ARR_SIZE, NUM_KEYS);
     }
     
     while (userResources.idx < numIterations + CONCURRENT_COUNT){
         BEGIN_THREAD_ZERO {
             userResources.idx++;
         } END_THREAD_ZERO
-        kvStore->KVAsyncPutFinalizeD(userResources.KVStatus, NUM_KEYS);
+        kvStore->KVAsyncMultiPutFinalizeD(userResources.KVStatus, NUM_KEYS);
     }
 }
 
