@@ -360,4 +360,64 @@ class KeyValueStore {
 };
 
 KVMemHandle KeyValueStore::kvMemHandle;
+
+class KeyValueStoreVLLM {
+public:
+    KeyValueStoreVLLM(const int numThreadBlocks, const int blockSize, int maxValueSize, int maxNumKeys, int maxKeySize);
+
+    ~KeyValueStoreVLLM();
+
+    static bool KVOpenDB();
+
+    static bool KVCloseDB();
+
+    static bool KVDeleteDB();
+
+    __device__ 
+    void KVPutD(void* key, unsigned int keySize, void* buff, unsigned int buffSize, KVStatusType &KVStatus);
+
+    __device__ 
+    void KVMultiPutD(void* keys[], unsigned int keySize, void* buffs[], unsigned int buffSize, KVStatusType KVStatus[], int numKeys);
+
+    __device__ 
+    void KVGetD(void* key, const unsigned int keySize, void* buff, const unsigned int buffSize, KVStatusType &KVStatus);
+
+    __device__ 
+    void KVMultiGetD(void* keys[], const unsigned int keySize, void* buffs[], const unsigned int buffSize, KVStatusType KVStatus[], int numKeys);
+
+    __device__ 
+    void KVDeleteD(void* key, unsigned int keySize, KVStatusType KVStatus[]);
+    
+    // Async Put
+    __device__ 
+    void KVAsyncPutInitiateD(void* keys[], unsigned int keySize, void* buffs[], unsigned int buffSize, int numKeys);
+
+    __device__
+    void KVAsyncPutFinalizeD(KVStatusType KVStatus[], int numKeys);
+
+    // Async Get
+    __device__
+    void KVAsyncGetInitiateD(void* keys[], const unsigned int keySize, int numKeys);
+
+    __device__
+    void KVAsyncGetFinalizeD(void* buffs[], const unsigned int buffSize, KVStatusType KVStatus[], int numKeys);
+
+    // Async Get ZC
+    __device__
+    void KVAsyncGetZCInitiateD(void* keys[], const unsigned int keySize, GPUMultiBufferHandle& valMultiBuff, const unsigned int buffSize, GPUMultiBufferHandle& kvStatusMultiBuff, int numKeys, unsigned int *p_ticket);
+
+    __device__
+    void KVAsyncGetZCFinalizeD(unsigned int ticket);
+
+    __host__
+    void KVMultiPutH(void* keys[], unsigned int keySize, void* buffs[], unsigned int buffSize, KVStatusType KVStatus[], size_t numKeys);
+    
+    __host__
+    void KVPutH(void* key, unsigned int keySize, void* buff, unsigned int buffSize, KVStatusType &KVStatus);
+
+private:
+    KeyValueStore *kvStoreR;
+    KeyValueStore *kvStoreW;
+};
+
 #endif // KEY_VALUE_STORE_H
