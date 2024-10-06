@@ -1323,35 +1323,35 @@ void KeyValueStoreVLLM::KVDeleteD(void* key, unsigned int keySize, KVStatusType 
 
 // Async Put
 __device__ 
-void KeyValueStoreVLLM::KVAsyncPutInitiateD(void* keys[], unsigned int keySize, void* buffs[], unsigned int buffSize, int numKeys) {
-    kvStoreW->KVAsyncPutInitiateD(keys, keySize, buffs, buffSize, numKeys);
+void KeyValueStoreVLLM::KVAsyncMultiPutInitiateD(void* keys[], unsigned int keySize, void* buffs[], unsigned int buffSize, int numKeys) {
+    kvStoreW->KVAsyncMultiPutInitiateD(keys, keySize, buffs, buffSize, numKeys);
 }
 
 __device__ 
-void KeyValueStoreVLLM::KVAsyncPutFinalizeD(KVStatusType KVStatus[], int numKeys) {
-    kvStoreW->KVAsyncPutFinalizeD(KVStatus, numKeys);
+void KeyValueStoreVLLM::KVAsyncMultiPutFinalizeD(KVStatusType KVStatus[], int numKeys) {
+    kvStoreW->KVAsyncMultiPutFinalizeD(KVStatus, numKeys);
 }
 
 // Async Get
 __device__ 
-void KeyValueStoreVLLM::KVAsyncGetInitiateD(void* keys[], const unsigned int keySize, int numKeys) {
-    kvStoreR->KVAsyncGetInitiateD(keys, keySize, numKeys);
+void KeyValueStoreVLLM::KVAsyncMultiGetInitiateD(void* keys[], const unsigned int keySize, int numKeys) {
+    kvStoreR->KVAsyncMultiGetInitiateD(keys, keySize, numKeys);
 }
 
 __device__ 
-void KeyValueStoreVLLM::KVAsyncGetFinalizeD(void* buffs[], const unsigned int buffSize, KVStatusType KVStatus[], int numKeys) {
-    kvStoreR->KVAsyncGetFinalizeD(buffs, buffSize, KVStatus, numKeys);
+void KeyValueStoreVLLM::KVAsyncMultiGetFinalizeD(void* buffs[], const unsigned int buffSize, KVStatusType KVStatus[], int numKeys) {
+    kvStoreR->KVAsyncMultiGetFinalizeD(buffs, buffSize, KVStatus, numKeys);
 }
 
 // Async Get ZC
 __device__ 
-void KeyValueStoreVLLM::KVAsyncGetZCInitiateD(void* keys[], const unsigned int keySize, GPUMultiBufferHandle& valMultiBuff, const unsigned int buffSize, GPUMultiBufferHandle& kvStatusMultiBuff, int numKeys, unsigned int *p_ticket) {
-    kvStoreR->KVAsyncGetZCInitiateD(keys, keySize, valMultiBuff, buffSize, kvStatusMultiBuff, numKeys, p_ticket);
+void KeyValueStoreVLLM::KVAsyncMultiGetZCInitiateD(void* keys[], const unsigned int keySize, GPUMultiBufferHandle& valMultiBuff, const unsigned int buffSize, GPUMultiBufferHandle& kvStatusMultiBuff, int numKeys, unsigned int *p_ticket) {
+    kvStoreR->KVAsyncMultiGetZCInitiateD(keys, keySize, valMultiBuff, buffSize, kvStatusMultiBuff, numKeys, p_ticket);
 }
 
 __device__
-void KeyValueStoreVLLM::KVAsyncGetZCFinalizeD(unsigned int ticket){
-    kvStoreR->KVAsyncGetZCFinalizeD(ticket);
+void KeyValueStoreVLLM::KVAsyncMultiGetZCFinalizeD(unsigned int ticket){
+    kvStoreR->KVAsyncMultiGetZCFinalizeD(ticket);
 }
 
 __host__
