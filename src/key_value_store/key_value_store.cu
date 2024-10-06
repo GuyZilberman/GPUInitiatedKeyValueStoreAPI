@@ -1283,31 +1283,31 @@ bool KeyValueStoreVLLM::KVDeleteDB() {
 __device__ 
 void KeyValueStoreVLLM::KVPutD(void* key, unsigned int keySize, void* buff, unsigned int buffSize, KVStatusType &KVStatus) {
     int tid = THREAD_ID;
-    T0_NOT_SUPPORTED_PRINT_DEVICE(KVAsyncGetInitiateD);
+    T0_NOT_SUPPORTED_PRINT_DEVICE(KVPutD);
 }
 
 __device__ 
 void KeyValueStoreVLLM::KVMultiPutD(void* keys[], unsigned int keySize, void* buffs[], unsigned int buffSize, KVStatusType KVStatus[], int numKeys) {
     int tid = THREAD_ID;
-    T0_NOT_SUPPORTED_PRINT_DEVICE(KVAsyncGetInitiateD);
+    T0_NOT_SUPPORTED_PRINT_DEVICE(KVMultiPutD);
 }
 
 __device__ 
 void KeyValueStoreVLLM::KVGetD(void* key, const unsigned int keySize, void* buff, const unsigned int buffSize, KVStatusType &KVStatus) {         
     int tid = THREAD_ID;
-    T0_NOT_SUPPORTED_PRINT_DEVICE(KVAsyncGetInitiateD);
+    T0_NOT_SUPPORTED_PRINT_DEVICE(KVGetD);
 }
 
 __device__ 
 void KeyValueStoreVLLM::KVMultiGetD(void* keys[], const unsigned int keySize, void* buffs[], const unsigned int buffSize, KVStatusType KVStatus[], int numKeys) {
     int tid = THREAD_ID;
-    T0_NOT_SUPPORTED_PRINT_DEVICE(KVAsyncGetInitiateD);
+    T0_NOT_SUPPORTED_PRINT_DEVICE(KVMultiGetD);
 }
 
 __device__ 
 void KeyValueStoreVLLM::KVDeleteD(void* key, unsigned int keySize, KVStatusType KVStatus[]) {
     int tid = THREAD_ID;
-    T0_NOT_SUPPORTED_PRINT_DEVICE(KVAsyncGetInitiateD);
+    T0_NOT_SUPPORTED_PRINT_DEVICE(KVDeleteD);
 }
 
 // Async Put
