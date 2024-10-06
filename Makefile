@@ -21,5 +21,5 @@ kvapp: $(BENCHMARK_OBJS) libkey_value_store.a
 	rm -f $(BENCHMARK_OBJS)
 
 clean:
-	rm -f $(BUILD_DIR)/*.o $(BUILD_DIR)/*.d *.a kvapp
+	rm -f $(BUILD_DIR)/*.o *.a kvapp
 	rm -rf $(BUILD_DIR)

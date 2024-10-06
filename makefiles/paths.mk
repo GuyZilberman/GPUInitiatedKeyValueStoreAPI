@@ -3,16 +3,19 @@ BUILD_DIR = build
 COMMON_BUILD_DIR = $(BUILD_DIR)/common
 KV_STORE_BUILD_DIR = $(BUILD_DIR)/key_value_store
 KV_API_APP_BUILD_DIR = $(BUILD_DIR)/kv_api_app
-SRC_DIR = src
-COMMON_DIR = $(SRC_DIR)/common
-KV_STORE_DIR = $(SRC_DIR)/key_value_store
-KV_API_APP_DIR = $(SRC_DIR)/kv_api_app
+
+# Source directories
+KVSTORE_SRC_DIR = src
+COMMON_DIR = $(KVSTORE_SRC_DIR)/common
+KV_STORE_DIR = $(KVSTORE_SRC_DIR)/key_value_store
+BENCHMARK_SRC_DIR = src_benchmark
+KV_API_APP_DIR = $(BENCHMARK_SRC_DIR)/kv_api_app
 
 # Source and object files
 KV_LIB_SRCS = $(wildcard $(KV_STORE_DIR)/*.cu) $(wildcard $(COMMON_DIR)/*.cpp)
-KV_LIB_OBJS = $(patsubst $(SRC_DIR)/%.cu,$(BUILD_DIR)/%.o,$(patsubst $(SRC_DIR)/%.cpp,$(BUILD_DIR)/%.o,$(KV_LIB_SRCS)))
+KV_LIB_OBJS = $(patsubst $(KVSTORE_SRC_DIR)/%.cu,$(BUILD_DIR)/%.o,$(patsubst $(KVSTORE_SRC_DIR)/%.cpp,$(BUILD_DIR)/%.o,$(KV_LIB_SRCS)))
 BENCHMARK_SRCS = $(wildcard $(KV_API_APP_DIR)/*.cu)
-BENCHMARK_OBJS = $(BENCHMARK_SRCS:$(SRC_DIR)/%.cu=$(BUILD_DIR)/%.o)
+BENCHMARK_OBJS = $(BENCHMARK_SRCS:$(KV_API_APP_DIR)/%.cu=$(BUILD_DIR)/%.o)
 
 # Set the parent directory
 PARENT_DIR := "$(BUILD_DIR)/.."

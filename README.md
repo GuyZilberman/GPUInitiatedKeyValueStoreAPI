@@ -104,6 +104,20 @@ bear make -j IN_MEMORY_STORE
 Note: The delete operation is currently unsupported in this mode. This functionality will be added in a future update.
 
 
+## Linking Your Application with the KeyValueStore Library
+To link your application with the `libkey_value_store.a` library, you can reuse the same compiler, flags, and libraries that are already defined in this project's `Makefile`. Here's how you can add the linking instructions to your own `Makefile`:
+```
+user_app: $(USER_APP_OBJECTS) libkey_value_store.a
+	$(CC) $(CFLAGS) $(USER_APP_CFLAGS) $(USER_APP_OBJECTS) -o $@ $(LFLAGS) $(USER_APP_LFLAGS) $(KV_APP_LIBS)
+```
+
+Replace the following placeholders with your specific values:
+- `user_app`: Replace this with your application target name.
+- `$(USER_APP_OBJECTS)`: The variable that lists all object files for your application.
+- `$(USER_APP_CFLAGS)`: Your application's compilation flags.
+- `$(USER_APP_LFLAGS)`: Your application's linker flags.
+- `$(CC)`, `$(CFLAGS)`, `$(LFLAGS)`, and `$(KV_APP_LIBS)`: These variables are already defined in the KeyValueStore project's `Makefile`, so you don't need to redefine them. Simply include them to maintain consistency with the project's build process.
+
 ## Usage
 
 Allocate pinned memory accessible by both CPU and GPU for a KeyValueStore instance.
