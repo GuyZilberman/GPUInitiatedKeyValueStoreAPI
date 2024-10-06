@@ -1324,8 +1324,7 @@ void KeyValueStoreVLLM::KVAsyncPutFinalizeD(KVStatusType KVStatus[], int numKeys
 // Async Get
 __device__ 
 void KeyValueStoreVLLM::KVAsyncGetInitiateD(void* keys[], const unsigned int keySize, int numKeys) {
-    int tid = THREAD_ID;
-    T0_NOT_SUPPORTED_PRINT_DEVICE(KVAsyncGetInitiateD);
+    kvStoreR->KVAsyncGetInitiateD(keys, keySize, numKeys);
 }
 
 __device__ 
