@@ -782,7 +782,7 @@ void KeyValueStore::process_kv_request(KVMemHandle &kvMemHandle, int blockIndex,
                 (unsigned char*)submission_queue->req_msg_arr[currModTail].key + submission_queue->req_msg_arr[currModTail].keySize,
                 keyArray.begin());
     
-        // Check if the key was successfully deleted
+        // Perform the deletion and check if the key was successfully deleted
         if (inMemoryStoreMap.erase(keyArray)) {
             curr_res_msg.KVStatus[0] = KVStatusType::SUCCESS;
         } else {

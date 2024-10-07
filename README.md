@@ -101,8 +101,6 @@ For the in-memory store configuration:
 ```
 bear make -j IN_MEMORY_STORE
 ```
-Note: The delete operation is currently unsupported in this mode. This functionality will be added in a future update.
-
 
 ## Linking Your Application with the KeyValueStore Library
 To link your application with the `libkey_value_store.a` library, you can reuse the same compiler, flags, and libraries that are already defined in this project's `Makefile`. Here's how you can add the linking instructions to your own `Makefile`:
