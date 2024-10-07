@@ -5,10 +5,11 @@ KV_STORE_BUILD_DIR = $(BUILD_DIR)/key_value_store
 KV_API_APP_BUILD_DIR = $(BUILD_DIR)/kv_api_app
 
 # Source directories
-KVSTORE_SRC_DIR = src
+SRC_DIR = src
+KVSTORE_SRC_DIR = $(SRC_DIR)/lib
 COMMON_DIR = $(KVSTORE_SRC_DIR)/common
 KV_STORE_DIR = $(KVSTORE_SRC_DIR)/key_value_store
-BENCHMARK_SRC_DIR = src_benchmark
+BENCHMARK_SRC_DIR = $(SRC_DIR)/benchmark
 KV_API_APP_DIR = $(BENCHMARK_SRC_DIR)/kv_api_app
 
 # Source and object files
