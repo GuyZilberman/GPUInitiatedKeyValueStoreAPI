@@ -22,17 +22,17 @@ To install XDP on host, follow the instructions below:
 
 Ubuntu 22.04:
 ```
-sudo apt-get install packages/ubuntu22.04/pliops-xdp-onhost_3.0.2.0.deb
+sudo apt-get install ./packages/ubuntu22.04/pliops-xdp-onhost_3.0.2.0.deb
 ```
 
 Ubuntu 20.04:
 ```
-sudo apt-get install packages/ubuntu20.04/pliops-xdp-onhost_3.0.2.0.deb
+sudo apt-get install ./packages/ubuntu20.04/pliops-xdp-onhost_3.0.2.0.deb
 ```
 
 RHEL 9.4:
 ```
-sudo yum install packages/redhat9.4/pliops-xdp-onhost_3.0.2.0.rpm
+sudo yum install ./packages/redhat9.4/pliops-xdp-onhost_3.0.2.0.rpm
 ```
 ### Configuring XDP on Host:
 
